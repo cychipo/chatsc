@@ -1,103 +1,103 @@
-# Feature Specification: Socket Message Delivery
+# Đặc tả tính năng: Gửi tin nhắn qua Socket
 
-**Feature Branch**: `006-socket-chat`  
-**Created**: 2026-04-05  
-**Status**: Draft  
-**Input**: User description: "bây giờ tôi muốn tạo spec cho phần gửi tin nhắn qua socket thay vì resfulapI, bạn tạo giúp tôi nhé"
+**Nhánh tính năng**: `006-socket-chat`  
+**Ngày tạo**: 2026-04-05  
+**Trạng thái**: Draft  
+**Đầu vào**: Mô tả người dùng: "bây giờ tôi muốn tạo spec cho phần gửi tin nhắn qua socket thay vì resfulapI, bạn tạo giúp tôi nhé"
 
-## User Scenarios & Testing *(mandatory)*
+## Kịch bản người dùng & Kiểm thử *(bắt buộc)*
 
-### User Story 1 - Send messages instantly in an active chat (Priority: P1)
+### User Story 1 - Gửi tin nhắn tức thời trong cuộc trò chuyện đang mở (Ưu tiên: P1)
 
-As a signed-in user, I want messages I send in a chat to be delivered through a persistent real-time connection so that I do not depend on repeated request-response submission for every message.
+Là một người dùng đã đăng nhập, tôi muốn tin nhắn mình gửi trong cuộc trò chuyện được truyền qua một kết nối thời gian thực liên tục để không phải phụ thuộc vào việc gửi request-response riêng cho từng tin nhắn.
 
-**Why this priority**: Sending a message is the core chat action. Without this, the chat experience remains delayed and inconsistent with user expectations for messaging.
+**Lý do ưu tiên**: Gửi tin nhắn là hành động cốt lõi của chat. Nếu chưa có phần này, trải nghiệm trò chuyện vẫn bị chậm và không đúng với kỳ vọng của người dùng đối với một ứng dụng nhắn tin.
 
-**Independent Test**: Open an existing conversation, send a message from one client, and verify that the message appears in the conversation immediately without requiring a page refresh or manual reload.
+**Kiểm thử độc lập**: Mở một cuộc trò chuyện có sẵn, gửi một tin nhắn từ một client, và xác nhận rằng tin nhắn xuất hiện ngay trong cuộc trò chuyện mà không cần tải lại trang hoặc làm mới thủ công.
 
-**Acceptance Scenarios**:
+**Kịch bản chấp nhận**:
 
-1. **Given** a signed-in user is connected to chat and has an active conversation open, **When** the user sends a message, **Then** the message is accepted through the live connection and appears in the conversation immediately.
-2. **Given** a signed-in user sends a non-empty message through the chat composer, **When** delivery succeeds, **Then** the message is shown once in the conversation and the composer is cleared.
-3. **Given** a signed-in user attempts to send an empty message, **When** the send action is triggered, **Then** the system rejects the message and keeps the conversation unchanged.
-
----
-
-### User Story 2 - Receive messages in real time from other participants (Priority: P2)
-
-As a conversation participant, I want to receive incoming messages as soon as they are sent so that I can follow the conversation live without refreshing the page.
-
-**Why this priority**: Real-time receipt is the main value unlocked by moving chat delivery away from request-response messaging.
-
-**Independent Test**: Open the same conversation in two active sessions, send a message from one session, and verify that the other session shows the new message in the open conversation without manual refresh.
-
-**Acceptance Scenarios**:
-
-1. **Given** two users are connected to the same conversation, **When** one user sends a message, **Then** the other user sees the message appear in that conversation immediately.
-2. **Given** a user is viewing the conversation list instead of the open thread, **When** a new message arrives in a joined conversation, **Then** the conversation preview and ordering update without a page refresh.
+1. **Cho trước** một người dùng đã đăng nhập đang kết nối vào chat và đang mở một cuộc trò chuyện, **Khi** người dùng gửi một tin nhắn, **Thì** tin nhắn được chấp nhận qua kết nối thời gian thực và xuất hiện ngay trong cuộc trò chuyện.
+2. **Cho trước** một người dùng đã đăng nhập gửi một tin nhắn không rỗng từ khung soạn thảo, **Khi** việc gửi thành công, **Thì** tin nhắn chỉ xuất hiện một lần trong cuộc trò chuyện và khung soạn thảo được xóa nội dung.
+3. **Cho trước** một người dùng đã đăng nhập cố gửi một tin nhắn rỗng, **Khi** hành động gửi được kích hoạt, **Thì** hệ thống từ chối tin nhắn và không thay đổi nội dung cuộc trò chuyện.
 
 ---
 
-### User Story 3 - Recover gracefully from connection interruptions (Priority: P3)
+### User Story 2 - Nhận tin nhắn thời gian thực từ người tham gia khác (Ưu tiên: P2)
 
-As a signed-in user, I want the chat experience to recover when the live connection drops temporarily so that brief network issues do not force me to restart the app or lose confidence in message delivery.
+Là một người tham gia cuộc trò chuyện, tôi muốn nhận tin nhắn đến ngay khi người khác gửi để có thể theo dõi cuộc trò chuyện theo thời gian thực mà không cần làm mới trang.
 
-**Why this priority**: Real-time chat is only trustworthy if users can understand and recover from intermittent connection problems.
+**Lý do ưu tiên**: Nhận tin nhắn theo thời gian thực là giá trị chính khi chuyển từ mô hình request-response sang kết nối trực tiếp.
 
-**Independent Test**: Disconnect the client during an active chat session, restore connectivity, and verify that the user can reconnect and continue sending messages without reopening the application.
+**Kiểm thử độc lập**: Mở cùng một cuộc trò chuyện trên hai phiên hoạt động khác nhau, gửi một tin nhắn từ một phiên, và xác nhận rằng phiên còn lại hiển thị tin nhắn mới ngay trong cuộc trò chuyện đang mở mà không cần làm mới thủ công.
 
-**Acceptance Scenarios**:
+**Kịch bản chấp nhận**:
 
-1. **Given** a user loses network connectivity during an active chat session, **When** the live connection drops, **Then** the user is informed that chat is temporarily disconnected.
-2. **Given** connectivity becomes available again, **When** the client reconnects, **Then** the user can resume sending messages in joined conversations.
-3. **Given** a user tries to send a message while the live connection is unavailable, **When** the send attempt occurs, **Then** the system makes the failure state clear and does not silently lose the message.
+1. **Cho trước** hai người dùng đang kết nối vào cùng một cuộc trò chuyện, **Khi** một người gửi tin nhắn, **Thì** người còn lại thấy tin nhắn xuất hiện ngay trong cuộc trò chuyện đó.
+2. **Cho trước** một người dùng đang xem danh sách cuộc trò chuyện thay vì khung chat đang mở, **Khi** có tin nhắn mới đến trong một cuộc trò chuyện mà họ tham gia, **Thì** phần preview và thứ tự cuộc trò chuyện được cập nhật mà không cần tải lại trang.
 
 ---
 
-### Edge Cases
+### User Story 3 - Khôi phục ổn định khi kết nối bị gián đoạn (Ưu tiên: P3)
 
-- What happens when a user opens a conversation before the live connection is fully established?
-- How does the system handle a user who is no longer an active participant in a conversation but still has the chat screen open?
-- What happens when the same user has multiple active sessions connected to the same conversation?
-- How does the system handle duplicate delivery attempts caused by reconnect or repeated send actions?
-- What happens when an incoming message arrives for a conversation that is not currently selected?
+Là một người dùng đã đăng nhập, tôi muốn trải nghiệm chat có thể tự phục hồi khi kết nối thời gian thực bị gián đoạn tạm thời để các lỗi mạng ngắn không bắt tôi phải mở lại ứng dụng hoặc làm tôi mất niềm tin vào việc gửi tin nhắn.
 
-## Requirements *(mandatory)*
+**Lý do ưu tiên**: Chat thời gian thực chỉ đáng tin cậy khi người dùng hiểu được trạng thái kết nối và có thể tiếp tục sử dụng sau gián đoạn ngắn.
 
-### Functional Requirements
+**Kiểm thử độc lập**: Ngắt kết nối client trong lúc đang chat, khôi phục mạng, và xác nhận rằng người dùng có thể kết nối lại và tiếp tục gửi tin nhắn mà không cần mở lại ứng dụng.
 
-- **FR-001**: The system MUST allow signed-in users to send chat messages over a persistent live connection instead of relying on per-message request-response submission.
-- **FR-002**: The system MUST only accept message sends from users who are active participants in the target conversation.
-- **FR-003**: Users MUST be able to send a message from the chat composer by pressing the send action or pressing Enter, while preserving Shift+Enter for line breaks.
-- **FR-004**: The system MUST deliver newly sent messages to all currently connected participants of the conversation without requiring page refresh.
-- **FR-005**: The system MUST update the active conversation thread immediately after a message is successfully delivered.
-- **FR-006**: The system MUST update conversation previews and ordering when a new message is delivered to a conversation the user can access.
-- **FR-007**: The system MUST reject empty or whitespace-only messages before delivery.
-- **FR-008**: The system MUST make delivery failures visible to the sender when a message cannot be accepted or transmitted.
-- **FR-009**: The system MUST indicate when the live chat connection is unavailable and when it becomes available again.
-- **FR-010**: The system MUST allow users to resume chat activity after temporary disconnection without requiring a full page reload.
-- **FR-011**: The system MUST prevent duplicate message display for the same delivered message in a client session.
-- **FR-012**: The system MUST preserve existing conversation permissions and membership rules for message delivery and receipt.
+**Kịch bản chấp nhận**:
 
-### Key Entities *(include if feature involves data)*
+1. **Cho trước** một người dùng bị mất kết nối mạng trong lúc đang chat, **Khi** kết nối thời gian thực bị ngắt, **Thì** người dùng được thông báo rằng chat đang tạm thời mất kết nối.
+2. **Cho trước** kết nối mạng khả dụng trở lại, **Khi** client kết nối lại thành công, **Thì** người dùng có thể tiếp tục gửi tin nhắn trong các cuộc trò chuyện mình đang tham gia.
+3. **Cho trước** một người dùng cố gửi tin nhắn khi kết nối thời gian thực chưa khả dụng, **Khi** hành động gửi xảy ra, **Thì** hệ thống phải hiển thị rõ trạng thái thất bại và không được làm mất tin nhắn một cách âm thầm.
 
-- **Live Chat Session**: Represents an authenticated user's active real-time connection state, including whether the session is connected, disconnected, or reconnecting.
-- **Conversation Message**: Represents a delivered chat message associated with a conversation, sender, send time, and delivery outcome visible to participants.
-- **Conversation Subscription**: Represents the relationship between a live client session and the conversations it is currently allowed to receive updates for.
+---
 
-## Success Criteria *(mandatory)*
+### Trường hợp biên
 
-### Measurable Outcomes
+- Điều gì xảy ra khi người dùng mở một cuộc trò chuyện trước khi kết nối thời gian thực được thiết lập hoàn toàn?
+- Hệ thống xử lý thế nào khi người dùng không còn là thành viên hoạt động của cuộc trò chuyện nhưng vẫn đang mở màn hình chat?
+- Điều gì xảy ra khi cùng một người dùng có nhiều phiên hoạt động cùng kết nối vào một cuộc trò chuyện?
+- Hệ thống xử lý thế nào với các lần gửi trùng lặp do reconnect hoặc do người dùng bấm gửi nhiều lần?
+- Điều gì xảy ra khi có tin nhắn mới đến cho một cuộc trò chuyện hiện không được chọn?
 
-- **SC-001**: In active conversations, users see their successfully sent messages appear in the thread in under 1 second in normal network conditions.
-- **SC-002**: In active conversations with two connected participants, 95% of new messages appear to the receiving participant in under 1 second in normal network conditions.
-- **SC-003**: 100% of empty-message send attempts are rejected without creating a visible chat entry.
-- **SC-004**: After a temporary connection interruption shorter than 30 seconds, users can resume sending messages without reloading the application.
-- **SC-005**: In validation testing, no delivered message appears more than once in the same client session for a single send action.
+## Yêu cầu *(bắt buộc)*
 
-## Assumptions
+### Yêu cầu chức năng
 
-- Existing authentication and conversation membership rules remain the source of truth for deciding who may send and receive messages.
-- Existing message history retrieval remains available for loading prior messages; this feature changes live delivery behavior rather than replacing message history access.
-- The initial scope covers browser-based chat usage in the current application experience.
-- Conversation creation, user search, and conversation list management remain part of the existing chat flow and are not redefined by this feature.
+- **FR-001**: Hệ thống PHẢI cho phép người dùng đã đăng nhập gửi tin nhắn chat qua một kết nối thời gian thực liên tục thay vì phụ thuộc vào mô hình gửi request-response cho từng tin nhắn.
+- **FR-002**: Hệ thống CHỈ được chấp nhận việc gửi tin nhắn từ những người dùng đang là thành viên hoạt động của cuộc trò chuyện đích.
+- **FR-003**: Người dùng PHẢI có thể gửi tin nhắn từ khung soạn thảo bằng nút gửi hoặc phím Enter, đồng thời vẫn giữ Shift+Enter để xuống dòng.
+- **FR-004**: Hệ thống PHẢI chuyển tin nhắn mới đến tất cả người tham gia hiện đang kết nối trong cùng cuộc trò chuyện mà không yêu cầu tải lại trang.
+- **FR-005**: Hệ thống PHẢI cập nhật ngay khung trò chuyện đang mở sau khi tin nhắn được gửi thành công.
+- **FR-006**: Hệ thống PHẢI cập nhật phần preview và thứ tự của cuộc trò chuyện khi có tin nhắn mới đến trong một cuộc trò chuyện mà người dùng có quyền truy cập.
+- **FR-007**: Hệ thống PHẢI từ chối các tin nhắn rỗng hoặc chỉ chứa khoảng trắng trước khi thực hiện gửi.
+- **FR-008**: Hệ thống PHẢI hiển thị rõ cho người gửi khi việc gửi thất bại hoặc tin nhắn không được chấp nhận.
+- **FR-009**: Hệ thống PHẢI cho biết khi kết nối chat thời gian thực không khả dụng và khi kết nối đó hoạt động trở lại.
+- **FR-010**: Hệ thống PHẢI cho phép người dùng tiếp tục hoạt động chat sau khi bị mất kết nối tạm thời mà không cần tải lại toàn bộ ứng dụng.
+- **FR-011**: Hệ thống PHẢI ngăn việc một tin nhắn đã được gửi thành công bị hiển thị lặp lại nhiều lần trong cùng một phiên client.
+- **FR-012**: Hệ thống PHẢI giữ nguyên các quy tắc hiện có về quyền truy cập cuộc trò chuyện và tư cách thành viên khi gửi và nhận tin nhắn.
+
+### Thực thể chính *(nếu tính năng có dữ liệu)*
+
+- **Phiên chat thời gian thực**: Đại diện cho trạng thái kết nối hoạt động của một người dùng đã xác thực, bao gồm các trạng thái như đang kết nối, bị ngắt kết nối, hoặc đang kết nối lại.
+- **Tin nhắn cuộc trò chuyện**: Đại diện cho một tin nhắn đã được chuyển thành công, gắn với cuộc trò chuyện, người gửi, thời điểm gửi, và trạng thái hiển thị cho người tham gia.
+- **Đăng ký nhận cuộc trò chuyện**: Đại diện cho mối quan hệ giữa một phiên client thời gian thực và các cuộc trò chuyện mà phiên đó được phép nhận cập nhật.
+
+## Tiêu chí thành công *(bắt buộc)*
+
+### Kết quả đo lường được
+
+- **SC-001**: Trong cuộc trò chuyện đang hoạt động, người dùng thấy tin nhắn mình gửi thành công xuất hiện trong khung chat trong dưới 1 giây ở điều kiện mạng bình thường.
+- **SC-002**: Trong cuộc trò chuyện đang hoạt động với hai người tham gia cùng kết nối, 95% tin nhắn mới xuất hiện với người nhận trong dưới 1 giây ở điều kiện mạng bình thường.
+- **SC-003**: 100% các lần cố gửi tin nhắn rỗng bị từ chối mà không tạo ra mục chat hiển thị nào.
+- **SC-004**: Sau một lần mất kết nối tạm thời ngắn hơn 30 giây, người dùng có thể tiếp tục gửi tin nhắn mà không cần tải lại ứng dụng.
+- **SC-005**: Trong kiểm thử xác nhận, không có tin nhắn nào đã được gửi thành công bị hiển thị nhiều hơn một lần trong cùng một phiên client cho một lần gửi duy nhất.
+
+## Giả định
+
+- Hệ thống xác thực hiện có và quy tắc thành viên của cuộc trò chuyện tiếp tục là nguồn sự thật để quyết định ai được quyền gửi và nhận tin nhắn.
+- Cơ chế tải lịch sử tin nhắn hiện có vẫn tiếp tục được sử dụng cho việc đọc lại tin nhắn cũ; tính năng này chỉ thay đổi cách truyền tin nhắn theo thời gian thực.
+- Phạm vi ban đầu chỉ bao gồm trải nghiệm chat trên trình duyệt trong ứng dụng hiện tại.
+- Việc tạo cuộc trò chuyện, tìm kiếm người dùng, và quản lý danh sách cuộc trò chuyện vẫn thuộc luồng chat hiện có và không bị định nghĩa lại trong tính năng này.

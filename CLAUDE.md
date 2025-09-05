@@ -9,6 +9,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-05
 - MongoDB cho backend persistence; client-side browser storage cho access token runtime; cookie HTTP-only cho refresh token (005-refresh-token)
 - TypeScript 5.x (frontend + backend), Node.js LTS + NestJS 10, Mongoose 8, React 18, Zustand 5, Axios 1.12, Ant Design 5 (003-chat-groups)
 - MongoDB (conversation, participant, message, membership-event) (003-chat-groups)
+- TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Zustand 5, Axios 1.12, cơ chế realtime phù hợp với NestJS cho WebSocket transpor (006-socket-chat)
+- MongoDB cho conversation/message persistence; không cần storage mới cho live delivery (006-socket-chat)
 
 - C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
 
@@ -28,7 +30,7 @@ tests/
 C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host: Follow standard conventions
 
 ## Recent Changes
+- 006-socket-chat: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Zustand 5, Axios 1.12, cơ chế realtime phù hợp với NestJS cho WebSocket transpor
 - 003-chat-groups: Added TypeScript 5.x (frontend + backend), Node.js LTS + NestJS 10, Mongoose 8, React 18, Zustand 5, Axios 1.12, Ant Design 5
 - 005-refresh-token: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-- 005-refresh-token: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, Passport, React 18, Zustand 5, Axios 1.12
 

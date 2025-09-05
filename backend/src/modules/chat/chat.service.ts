@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { AuthService } from '../auth/auth.service'
@@ -20,6 +20,26 @@ type ConversationSummary = {
   displayAvatarUrl?: string
   lastMessagePreview?: string
   directPeer?: SessionUser
+}
+
+export type RealtimeMessagePayload = {
+  messageId: string
+  conversationId: string
+  senderId: string
+  content: string
+  sentAt: string
+}
+
+export type ConversationPreviewPayload = {
+  conversationId: string
+  lastMessagePreview: string
+  lastMessageAt: string
+}
+
+export type RealtimeErrorPayload = {
+  code: string
+  message: string
+  conversationId?: string
 }
 
 @Injectable()
@@ -213,10 +233,19 @@ export class ChatService {
   }
 
   async sendMessage(conversationId: string, senderId: string, content: string) {
+    const trimmedContent = content.trim()
+
+    if (!trimmedContent) {
+      throw new BadRequestException({
+        code: 'EMPTY_MESSAGE',
+        message: 'Message content cannot be empty',
+      })
+    }
+
     const message = await this.messageModel.create({
       conversationId: new Types.ObjectId(conversationId),
       senderId: new Types.ObjectId(senderId),
-      content,
+      content: trimmedContent,
       sentAt: new Date(),
       deliveryStatus: 'sent',
     })
@@ -229,12 +258,36 @@ export class ChatService {
     return message
   }
 
+  async sendRealtimeMessage(conversationId: string, senderId: string, content: string) {
+    await this.getRequiredActiveParticipant(conversationId, senderId)
+    const message = await this.sendMessage(conversationId, senderId, content)
+    return this.toRealtimeMessagePayload(message)
+  }
+
   async getMessages(conversationId: string, before?: string, limit = 10) {
     const query: Record<string, unknown> = { conversationId: new Types.ObjectId(conversationId) }
     if (before) {
       query.sentAt = { $lt: new Date(before) }
     }
     return this.messageModel.find(query).sort({ sentAt: -1 }).limit(Math.min(limit, 50)).lean()
+  }
+
+  async buildConversationPreviewPayload(conversationId: string): Promise<ConversationPreviewPayload> {
+    const latestMessage = await this.messageModel
+      .findOne({ conversationId: new Types.ObjectId(conversationId) })
+      .sort({ sentAt: -1 })
+      .lean()
+
+    const conversation = await this.conversationModel.findById(conversationId).lean()
+
+    return {
+      conversationId,
+      lastMessagePreview: latestMessage?.content ?? '',
+      lastMessageAt:
+        latestMessage?.sentAt?.toISOString() ??
+        conversation?.lastMessageAt?.toISOString() ??
+        new Date().toISOString(),
+    }
   }
 
   async addMember(conversationId: string, userId: string, actorId: string) {
@@ -332,5 +385,60 @@ export class ChatService {
     return this.participantModel
       .find({ conversationId: new Types.ObjectId(conversationId), status: 'active' })
       .lean()
+  }
+
+  async getRequiredActiveParticipant(conversationId: string, userId: string) {
+    const participant = await this.getActiveParticipant(conversationId, userId)
+
+    if (!participant) {
+      throw new ForbiddenException('You are not an active participant of this conversation')
+    }
+
+    return participant
+  }
+
+  toRealtimeMessagePayload(message: {
+    _id: Types.ObjectId | { toString(): string }
+    conversationId: Types.ObjectId | { toString(): string }
+    senderId: Types.ObjectId | { toString(): string }
+    content: string
+    sentAt: Date
+  }): RealtimeMessagePayload {
+    return {
+      messageId: message._id.toString(),
+      conversationId: message.conversationId.toString(),
+      senderId: message.senderId.toString(),
+      content: message.content,
+      sentAt: message.sentAt.toISOString(),
+    }
+  }
+
+  normalizeRealtimeError(error: unknown, conversationId?: string): RealtimeErrorPayload {
+    if (error instanceof ForbiddenException) {
+      return {
+        code: 'FORBIDDEN',
+        message: 'You are not an active participant of this conversation',
+        conversationId,
+      }
+    }
+
+    if (error instanceof BadRequestException) {
+      const response = error.getResponse() as { code?: string; message?: string | string[] }
+      const message = Array.isArray(response.message)
+        ? response.message[0]
+        : response.message ?? 'Chat error'
+
+      return {
+        code: response.code ?? 'BAD_REQUEST',
+        message,
+        conversationId,
+      }
+    }
+
+    return {
+      code: 'CHAT_ERROR',
+      message: error instanceof Error ? error.message : 'Unknown chat error',
+      conversationId,
+    }
   }
 }

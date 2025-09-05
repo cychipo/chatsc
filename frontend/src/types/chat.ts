@@ -3,6 +3,14 @@ export type ChatStatus = {
   status: string
 }
 
+export type ChatConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
+
+export type ChatSocketError = {
+  code: string
+  message: string
+  conversationId?: string
+}
+
 export type ConversationType = 'direct' | 'group'
 
 export type ConversationPeer = {
@@ -50,6 +58,20 @@ export type Message = {
   sentAt: string
   deliveryStatus: DeliveryStatus
   decodeErrorCode?: string
+}
+
+export type RealtimeMessage = {
+  messageId: string
+  conversationId: string
+  senderId: string
+  content: string
+  sentAt: string
+}
+
+export type ConversationPreviewUpdate = {
+  conversationId: string
+  lastMessagePreview: string
+  lastMessageAt: string
 }
 
 export type MembershipEventType = 'added' | 'joined' | 'left' | 'removed'
