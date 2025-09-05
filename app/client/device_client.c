@@ -88,3 +88,26 @@ int device_process_message(const char *device_path, const chat_request_t *reques
     close(fd);
     return 0;
 }
+
+int process_request_with_device(const char *device_path, unsigned int message_id, request_type_t request_type,
+                                processing_mode_t mode, const char *username, const char *peer_username,
+                                const char *auth_payload, const char *payload, const char *plaintext_payload,
+                                chat_response_t *response) {
+    chat_request_t request;
+
+    if (response == NULL) {
+        return -1;
+    }
+
+    if (format_device_request(&request, message_id, request_type, mode, username, peer_username,
+                              auth_payload, payload, plaintext_payload) != 0) {
+        memset(response, 0, sizeof(*response));
+        response->message_id = message_id;
+        response->response_type = RESPONSE_ACK;
+        response->status = STATUS_INVALID_REQUEST;
+        snprintf(response->payload, sizeof(response->payload), "%s", "invalid-request");
+        return -1;
+    }
+
+    return device_process_message(device_path, &request, response);
+}
