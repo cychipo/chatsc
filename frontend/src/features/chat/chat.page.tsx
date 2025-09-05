@@ -85,15 +85,15 @@ function updateConversationPreview(
 
 function getConnectionLabel(state: ChatConnectionState) {
   if (state === "connected") {
-    return { type: "success" as const, message: "Đã kết nối realtime" };
+    return { type: "success" as const, message: "Đã kết nối " };
   }
 
   if (state === "connecting") {
-    return { type: "info" as const, message: "Đang kết nối realtime..." };
+    return { type: "info" as const, message: "Đang kết nối ..." };
   }
 
   if (state === "reconnecting") {
-    return { type: "warning" as const, message: "Đang kết nối lại realtime..." };
+    return { type: "warning" as const, message: "Đang kết nối lại ..." };
   }
 
   return {
@@ -259,7 +259,9 @@ export function ChatPage() {
         setConnectionState(nextState);
       },
     );
-    const unsubscribeMessage = chatSocketService.onMessage(handleIncomingMessage);
+    const unsubscribeMessage = chatSocketService.onMessage(
+      handleIncomingMessage,
+    );
     const unsubscribePreview = chatSocketService.onPreview(handlePreviewUpdate);
     const unsubscribeError = chatSocketService.onError(handleSocketError);
 
@@ -270,7 +272,12 @@ export function ChatPage() {
       unsubscribeError();
       chatSocketService.disconnect();
     };
-  }, [handleIncomingMessage, handlePreviewUpdate, handleSocketError, isAuthenticated]);
+  }, [
+    handleIncomingMessage,
+    handlePreviewUpdate,
+    handleSocketError,
+    isAuthenticated,
+  ]);
 
   useEffect(() => {
     if (!selectedConversationIdIsValid(state.selectedConversationId)) {
@@ -547,7 +554,8 @@ export function ChatPage() {
                   {currentUser?.displayName ?? "Người dùng"}
                 </Typography.Text>
                 <Typography.Text style={styles.profileStatus as never}>
-                  @{currentUser?.username ?? "unknown"} · {currentUser?.email ?? ""}
+                  @{currentUser?.username ?? "unknown"} ·{" "}
+                  {currentUser?.email ?? ""}
                 </Typography.Text>
               </div>
             </div>
@@ -572,7 +580,9 @@ export function ChatPage() {
                 <ConversationList
                   conversations={state.conversations}
                   selectedId={state.selectedConversationId}
-                  onSelect={(conversationId) => void selectConversation(conversationId)}
+                  onSelect={(conversationId) =>
+                    void selectConversation(conversationId)
+                  }
                   onContextMenu={handleConversationContextMenu}
                 />
               )}
@@ -590,7 +600,11 @@ export function ChatPage() {
             <div style={styles.chatTopStack}>
               <header style={styles.chatHeaderSimple}>
                 <div style={styles.chatHeaderLeftSimple}>
-                  <Button type="text" shape="circle" icon={<Menu size={18} />} />
+                  <Button
+                    type="text"
+                    shape="circle"
+                    icon={<Menu size={18} />}
+                  />
                   <Avatar size={42} style={styles.chatHeaderAvatar}>
                     {headerTitle.charAt(0).toUpperCase()}
                   </Avatar>
