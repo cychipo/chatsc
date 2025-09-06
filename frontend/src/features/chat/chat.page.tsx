@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Avatar, Button, Input, Modal, Spin, Typography } from "antd";
+import { Avatar, Button, Input, Modal, Spin, Typography } from "antd";
 import { Search, Ellipsis, Menu, Plus, Settings } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { searchUsers } from "../../services/auth.service";
@@ -44,6 +44,30 @@ type ConversationContextMenuState = {
   y: number;
 };
 
+const SELECTED_CONVERSATION_PARAM = "conversationId";
+
+function readSelectedConversationIdFromLocation(search: string) {
+  const params = new URLSearchParams(search);
+  return params.get(SELECTED_CONVERSATION_PARAM);
+}
+
+function replaceSelectedConversationInLocation(conversationId: string | null) {
+  const params = new URLSearchParams(window.location.search);
+
+  if (conversationId) {
+    params.set(SELECTED_CONVERSATION_PARAM, conversationId);
+  } else {
+    params.delete(SELECTED_CONVERSATION_PARAM);
+  }
+
+  const nextSearch = params.toString();
+  const nextUrl = nextSearch
+    ? `${window.location.pathname}?${nextSearch}`
+    : window.location.pathname;
+
+  window.history.replaceState({}, document.title, nextUrl);
+}
+
 function upsertMessage(messages: Message[], message: Message) {
   if (messages.some((item) => item._id === message._id)) {
     return messages;
@@ -83,25 +107,6 @@ function updateConversationPreview(
   });
 }
 
-function getConnectionLabel(state: ChatConnectionState) {
-  if (state === "connected") {
-    return { type: "success" as const, message: "Đã kết nối " };
-  }
-
-  if (state === "connecting") {
-    return { type: "info" as const, message: "Đang kết nối ..." };
-  }
-
-  if (state === "reconnecting") {
-    return { type: "warning" as const, message: "Đang kết nối lại ..." };
-  }
-
-  return {
-    type: "error" as const,
-    message: "Mất kết nối realtime. Bạn chưa thể gửi tin nhắn.",
-  };
-}
-
 export function ChatPage() {
   const { currentUser, isAuthenticated } = useAuthStore();
   const [state, setState] = useState<ChatState>({
@@ -127,9 +132,12 @@ export function ChatPage() {
     useState<ConversationContextMenuState | null>(null);
   const [connectionState, setConnectionState] =
     useState<ChatConnectionState>("disconnected");
-  const [chatError, setChatError] = useState<string | null>(null);
   const messageThreadRef = useRef<HTMLDivElement>(null);
   const joinedConversationRef = useRef<string | null>(null);
+  const hasRestoredConversationFromUrlRef = useRef(false);
+  const requestedConversationIdRef = useRef(
+    readSelectedConversationIdFromLocation(window.location.search),
+  );
 
   const palette = {
     page: "linear-gradient(180deg, #fbf4ea 0%, #fff8f1 100%)",
@@ -180,7 +188,6 @@ export function ChatPage() {
   }, []);
 
   const selectConversation = useCallback(async (conversationId: string) => {
-    setChatError(null);
     setState((prev) => ({
       ...prev,
       selectedConversationId: conversationId,
@@ -236,14 +243,55 @@ export function ChatPage() {
     [],
   );
 
-  const handleSocketError = useCallback((error: ChatSocketError) => {
-    setChatError(error.message);
+  const handleSocketError = useCallback((_error: ChatSocketError) => {
     setState((prev) => ({ ...prev, sendingMessage: false }));
   }, []);
 
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    if (state.loadingConversations || hasRestoredConversationFromUrlRef.current) {
+      return;
+    }
+
+    hasRestoredConversationFromUrlRef.current = true;
+
+    const conversationIdFromUrl = requestedConversationIdRef.current;
+
+    if (!conversationIdFromUrl) {
+      return;
+    }
+
+    const targetConversation = state.conversations.find(
+      (conversation) => conversation._id === conversationIdFromUrl,
+    );
+
+    if (!targetConversation) {
+      replaceSelectedConversationInLocation(null);
+      requestedConversationIdRef.current = null;
+      return;
+    }
+
+    void selectConversation(conversationIdFromUrl);
+  }, [selectConversation, state.conversations, state.loadingConversations]);
+
+  useEffect(() => {
+    if (!hasRestoredConversationFromUrlRef.current) {
+      return;
+    }
+
+    if (
+      state.selectedConversationId === null &&
+      requestedConversationIdRef.current !== null
+    ) {
+      return;
+    }
+
+    replaceSelectedConversationInLocation(state.selectedConversationId);
+    requestedConversationIdRef.current = state.selectedConversationId;
+  }, [state.selectedConversationId]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -398,7 +446,6 @@ export function ChatPage() {
 
   const handleSend = async () => {
     if (!inputValue.trim()) {
-      setChatError("Tin nhắn không được để trống.");
       return;
     }
 
@@ -407,11 +454,9 @@ export function ChatPage() {
     }
 
     if (connectionState !== "connected") {
-      setChatError("Realtime chat chưa sẵn sàng để gửi tin nhắn.");
       return;
     }
 
-    setChatError(null);
     setState((prev) => ({ ...prev, sendingMessage: true }));
 
     try {
@@ -525,8 +570,10 @@ export function ChatPage() {
   const headerTitle =
     selectedConversation?.displayTitle ||
     selectedConversation?.title ||
-    "Đoạn chat";
-  const connectionLabel = getConnectionLabel(connectionState);
+    "Chọn một đoạn chat";
+  const headerSubtitle = inputValue.trim()
+    ? "Đang soạn tin..."
+    : selectedConversation?.directPeer?.email ?? "";
 
   return (
     <div
@@ -619,11 +666,13 @@ export function ChatPage() {
                     >
                       {headerTitle}
                     </Typography.Title>
-                    <Typography.Text
-                      style={{ color: palette.textMuted, fontSize: 13 }}
-                    >
-                      {connectionLabel.message}
-                    </Typography.Text>
+                    {headerSubtitle ? (
+                      <Typography.Text
+                        style={{ color: palette.textMuted, fontSize: 13 }}
+                      >
+                        {headerSubtitle}
+                      </Typography.Text>
+                    ) : null}
                   </div>
                 </div>
                 <div style={styles.heroActions}>
@@ -640,64 +689,60 @@ export function ChatPage() {
                 </div>
               </header>
 
-              <Alert
-                type={connectionLabel.type}
-                showIcon
-                message={connectionLabel.message}
-                style={styles.statusAlert}
-              />
-
-              {chatError ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  closable
-                  message={chatError}
-                  onClose={() => setChatError(null)}
-                  style={styles.statusAlert}
-                />
-              ) : null}
             </div>
 
-            <div
-              ref={messageThreadRef}
-              onScroll={handleScroll}
-              style={styles.messageStreamSimple}
-            >
-              <div style={styles.dayBadge}>Hôm nay</div>
-              {state.loadingMessages && combinedTimeline.length === 0 ? (
-                <Spin />
-              ) : (
-                combinedTimeline.map((item, index) =>
-                  item.kind === "event" ? (
-                    <EventBubble key={`event-${index}`} event={item.event} />
+            {selectedConversation ? (
+              <>
+                <div
+                  ref={messageThreadRef}
+                  onScroll={handleScroll}
+                  style={styles.messageStreamSimple}
+                >
+                  <div style={styles.dayBadge}>Hôm nay</div>
+                  {state.loadingMessages && combinedTimeline.length === 0 ? (
+                    <Spin />
                   ) : (
-                    <MessageBubble
-                      key={item.message._id}
-                      message={item.message}
-                      isMine={item.message.senderId === currentUser?.id}
-                      authorName={
-                        item.message.senderId === currentUser?.id
-                          ? (currentUser?.displayName ?? "Bạn")
-                          : (selectedConversation?.directPeer?.displayName ??
-                            selectedConversation?.displayTitle ??
-                            "Người dùng")
-                      }
-                    />
-                  ),
-                )
-              )}
-            </div>
+                    combinedTimeline.map((item, index) =>
+                      item.kind === "event" ? (
+                        <EventBubble key={`event-${index}`} event={item.event} />
+                      ) : (
+                        <MessageBubble
+                          key={item.message._id}
+                          message={item.message}
+                          isMine={item.message.senderId === currentUser?.id}
+                          authorName={
+                            item.message.senderId === currentUser?.id
+                              ? (currentUser?.displayName ?? "Bạn")
+                              : (selectedConversation.directPeer?.displayName ??
+                                selectedConversation.displayTitle ??
+                                "Người dùng")
+                          }
+                        />
+                      ),
+                    )
+                  )}
+                </div>
 
-            <ChatComposer
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={handleSend}
-              onLeave={handleLeave}
-              loading={state.sendingMessage}
-              disabled={!state.selectedConversationId}
-              connectionState={connectionState}
-            />
+                <ChatComposer
+                  value={inputValue}
+                  onChange={setInputValue}
+                  onSend={handleSend}
+                  onLeave={handleLeave}
+                  loading={state.sendingMessage}
+                  disabled={!state.selectedConversationId}
+                  connectionState={connectionState}
+                />
+              </>
+            ) : (
+              <div style={styles.emptyChatState}>
+                <Typography.Title level={3} style={styles.emptyChatTitle as never}>
+                  Chọn một đoạn chat
+                </Typography.Title>
+                <Typography.Text style={styles.emptyChatDescription as never}>
+                  Chọn cuộc trò chuyện bên trái hoặc bắt đầu một tin nhắn mới.
+                </Typography.Text>
+              </div>
+            )}
           </section>
         </main>
 
@@ -926,6 +971,25 @@ const styles = {
     minHeight: 0,
     paddingRight: 8,
   } satisfies React.CSSProperties,
+  emptyChatState: {
+    minHeight: 0,
+    display: "grid",
+    placeItems: "center",
+    alignContent: "center",
+    gap: 10,
+    textAlign: "center",
+    padding: 24,
+  } satisfies React.CSSProperties,
+  emptyChatTitle: {
+    margin: 0,
+    color: "#431407",
+    fontFamily: "Plus Jakarta Sans, sans-serif",
+  } satisfies React.CSSProperties,
+  emptyChatDescription: {
+    color: "rgba(67, 20, 7, 0.55)",
+    fontSize: 14,
+    maxWidth: 360,
+  } satisfies React.CSSProperties,
   dayBadge: {
     justifySelf: "center",
     padding: "6px 14px",
@@ -934,9 +998,6 @@ const styles = {
     color: "#8d7168",
     fontSize: 12,
     fontWeight: 600,
-  } satisfies React.CSSProperties,
-  statusAlert: {
-    marginBottom: 0,
   } satisfies React.CSSProperties,
   modalContent: {
     display: "grid",

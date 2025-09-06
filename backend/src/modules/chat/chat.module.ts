@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { AuthModule } from '../auth/auth.module'
 import { ChatController } from './chat.controller'
+import { ChatEncryptionService } from './chat-encryption.service'
 import { ChatGateway } from './chat.gateway'
 import { ChatService } from './chat.service'
 import { Conversation, ConversationSchema } from './schemas/conversation.schema'
@@ -20,7 +21,7 @@ import { MembershipEvent, MembershipEventSchema } from './schemas/membership-eve
     ]),
   ],
   controllers: [ChatController],
-  providers: [ChatService, ChatGateway],
+  providers: [ChatService, ChatEncryptionService, ChatGateway],
   exports: [ChatService],
 })
 export class ChatModule {}

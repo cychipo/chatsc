@@ -50,6 +50,8 @@ export function mapRealtimeMessage(message: RealtimeMessage): Message {
     content: message.content,
     sentAt: message.sentAt,
     deliveryStatus: 'sent',
+    decodeErrorCode: message.decodeErrorCode,
+    displayState: message.displayState,
   }
 }
 

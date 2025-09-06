@@ -19,7 +19,7 @@ let refreshSessionHandler: null | (() => Promise<string | null>) = null
 let authFailureHandler: null | (() => void) = null
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
   headers: {
     'Content-Type': 'application/json',
   },
