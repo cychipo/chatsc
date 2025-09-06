@@ -42,6 +42,10 @@ describe('AuthService profile creation', () => {
       {
         findById: jest.fn(),
       } as never,
+      {
+        isLocalAuthEnabled: jest.fn(),
+        hashPasswordWithSha1: jest.fn(),
+      } as never,
     )
 
     const result = await authService.upsertGoogleUser({

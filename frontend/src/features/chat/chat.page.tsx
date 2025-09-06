@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, Button, Input, Modal, Spin, Typography } from "antd";
-import { Search, Ellipsis, Menu, Plus, Settings } from "lucide-react";
+import { Search, Ellipsis, LogOut, Menu, Plus } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { searchUsers } from "../../services/auth.service";
 import {
@@ -108,7 +108,7 @@ function updateConversationPreview(
 }
 
 export function ChatPage() {
-  const { currentUser, isAuthenticated } = useAuthStore();
+  const { currentUser, isAuthenticated, logout } = useAuthStore();
   const [state, setState] = useState<ChatState>({
     conversations: [],
     selectedConversationId: null,
@@ -635,10 +635,14 @@ export function ChatPage() {
               )}
             </div>
 
-            <button type="button" style={styles.settingsRow}>
-              <Settings size={16} />
-              <span>Cài đặt</span>
-            </button>
+            <Button
+              type="text"
+              icon={<LogOut size={16} />}
+              style={styles.settingsRow}
+              onClick={() => void logout()}
+            >
+              Đăng xuất
+            </Button>
           </aside>
 
           <section

@@ -1,15 +1,28 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { JwtPayload, SignOptions, TokenExpiredError, verify, sign } from 'jsonwebtoken'
 import { Model, Types } from 'mongoose'
 import { createHash, randomUUID } from 'crypto'
 import { backendEnv } from '../../config/env.config'
-import { AuthAttempt, AuthAttemptDocument } from './schemas/auth-attempt.schema'
+import { AuthAttempt, AuthAttemptDocument, AuthProvider } from './schemas/auth-attempt.schema'
 import { RefreshSession, RefreshSessionDocument } from './schemas/refresh-session.schema'
 import { User, UserDocument } from './schemas/user.schema'
 import { SessionUser } from './types/auth-session'
 import { AccessTokenPayload, RefreshSessionResponse } from './types/token-payload'
 import { deriveBaseUsername, resolveUsernameCollision } from './utils/username.util'
+import {
+  LoginLocalAuthDto,
+  RegisterLocalAuthDto,
+  normalizeEmail,
+  normalizeTextField,
+} from './dto/local-auth.dto'
+import { AuthProcessingError, AuthProcessingService } from './auth-processing.service'
 
 export type GoogleAuthUser = {
   googleId: string
@@ -31,6 +44,7 @@ export class AuthService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(AuthAttempt.name) private readonly authAttemptModel: Model<AuthAttemptDocument>,
     @InjectModel(RefreshSession.name) private readonly refreshSessionModel: Model<RefreshSessionDocument>,
+    private readonly authProcessingService: AuthProcessingService,
   ) {}
 
   async findById(id: string) {
@@ -44,7 +58,7 @@ export class AuthService {
   }
 
   async findByEmail(email: string) {
-    return this.userModel.findOne({ email }).lean()
+    return this.userModel.findOne({ email: normalizeEmail(email) }).lean()
   }
 
   async searchUsers(query: string, currentUserId: string) {
@@ -60,11 +74,7 @@ export class AuthService {
     const users = await this.userModel
       .find({
         _id: { $ne: new Types.ObjectId(currentUserId) },
-        $or: [
-          { email: searchRegex },
-          { username: searchRegex },
-          { displayName: searchRegex },
-        ],
+        $or: [{ email: searchRegex }, { username: searchRegex }, { displayName: searchRegex }],
       })
       .sort({ username: 1 })
       .limit(10)
@@ -74,18 +84,20 @@ export class AuthService {
   }
 
   async upsertGoogleUser(payload: GoogleAuthUser) {
-    const existingUser = await this.userModel.findOne({ email: payload.email })
+    const normalizedEmail = normalizeEmail(payload.email)
+    const displayName = normalizeTextField(payload.displayName)
+    const existingUser = await this.userModel.findOne({ email: normalizedEmail })
 
     if (existingUser) {
       existingUser.googleId = payload.googleId
-      existingUser.displayName = payload.displayName
+      existingUser.displayName = displayName
       existingUser.avatarUrl = payload.avatarUrl
       await existingUser.save()
 
       return this.toSessionUser(existingUser.toObject())
     }
 
-    const baseUsername = deriveBaseUsername(payload.email)
+    const baseUsername = deriveBaseUsername(normalizedEmail)
     const username = await resolveUsernameCollision(baseUsername, async (candidate) => {
       const user = await this.userModel.exists({ username: candidate })
       return Boolean(user)
@@ -93,17 +105,212 @@ export class AuthService {
 
     const createdUser = await this.userModel.create({
       googleId: payload.googleId,
-      email: payload.email,
+      email: normalizedEmail,
       username,
-      displayName: payload.displayName,
+      displayName,
       avatarUrl: payload.avatarUrl,
       status: 'active',
+      localAuth: {
+        enabled: false,
+      },
     })
 
     return this.toSessionUser(createdUser.toObject())
   }
 
-  async issueTokenPair(user: SessionUser, createdBy = 'google-login'): Promise<RefreshSessionResponse & { refreshToken: string }> {
+  async registerLocalAccount(payload: RegisterLocalAuthDto) {
+    if (!this.authProcessingService.isLocalAuthEnabled()) {
+      throw new BadRequestException({
+        code: 'local_auth_disabled',
+        message: 'Local authentication is disabled',
+      })
+    }
+
+    const email = normalizeEmail(payload.email)
+    const username = normalizeTextField(payload.username)
+    const displayName = normalizeTextField(payload.displayName)
+
+    await this.recordAttempt({
+      provider: 'local-register',
+      result: 'started',
+      emailCandidate: email,
+    })
+
+    const existingEmail = await this.userModel.exists({ email })
+    if (existingEmail) {
+      await this.recordAttempt({
+        provider: 'local-register',
+        result: 'failed',
+        emailCandidate: email,
+        failureReason: 'email-already-exists',
+      })
+      throw new ConflictException({
+        code: 'email_already_exists',
+        message: 'Email already exists',
+      })
+    }
+
+    const existingUsername = await this.userModel.exists({ username })
+    if (existingUsername) {
+      await this.recordAttempt({
+        provider: 'local-register',
+        result: 'failed',
+        emailCandidate: email,
+        failureReason: 'username-already-exists',
+      })
+      throw new ConflictException({
+        code: 'username_already_exists',
+        message: 'Username already exists',
+      })
+    }
+
+    let passwordSha1: string
+
+    try {
+      passwordSha1 = await this.authProcessingService.hashPasswordWithSha1(email, payload.password)
+    } catch (error) {
+      await this.recordAttempt({
+        provider: 'local-register',
+        result: 'failed',
+        emailCandidate: email,
+        failureReason: 'sha1-processing-unavailable',
+      })
+      throw this.mapAuthProcessingError(error)
+    }
+
+    const createdUser = await this.userModel.create({
+      email,
+      username,
+      displayName,
+      status: 'active',
+      avatarUrl: undefined,
+      localAuth: {
+        enabled: true,
+        passwordSha1,
+        passwordUpdatedAt: new Date(),
+        createdVia: 'register',
+      },
+    })
+
+    const sessionUser = this.toSessionUser(createdUser.toObject())
+    const issuedSession = await this.issueTokenPair(sessionUser, 'local-register')
+
+    await this.recordAttempt({
+      provider: 'local-register',
+      result: 'succeeded',
+      emailCandidate: email,
+      userId: sessionUser.id,
+      sessionId: issuedSession.sessionId,
+    })
+
+    return issuedSession
+  }
+
+  async loginLocalAccount(payload: LoginLocalAuthDto) {
+    if (!this.authProcessingService.isLocalAuthEnabled()) {
+      throw new UnauthorizedException({
+        code: 'local_auth_disabled',
+        message: 'Local authentication is disabled',
+      })
+    }
+
+    const email = normalizeEmail(payload.email)
+
+    await this.recordAttempt({
+      provider: 'local-login',
+      result: 'started',
+      emailCandidate: email,
+    })
+
+    const user = await this.userModel.findOne({ email })
+    if (!user) {
+      await this.recordAttempt({
+        provider: 'local-login',
+        result: 'failed',
+        emailCandidate: email,
+        failureReason: 'invalid-local-credentials',
+      })
+      throw new UnauthorizedException({
+        code: 'local_auth_invalid_credentials',
+        message: 'Email or password is incorrect',
+      })
+    }
+
+    if (user.status !== 'active') {
+      await this.recordAttempt({
+        provider: 'local-login',
+        result: 'failed',
+        emailCandidate: email,
+        userId: user.id,
+        failureReason: 'account-disabled',
+      })
+      throw new UnauthorizedException({
+        code: 'local_auth_account_disabled',
+        message: 'Account is not allowed to sign in',
+      })
+    }
+
+    if (!user.localAuth?.enabled || !user.localAuth.passwordSha1) {
+      await this.recordAttempt({
+        provider: 'local-login',
+        result: 'failed',
+        emailCandidate: email,
+        userId: user.id,
+        failureReason: 'local-auth-not-enabled',
+      })
+      throw new UnauthorizedException({
+        code: 'local_auth_not_enabled',
+        message: 'Local sign-in is not available for this account',
+      })
+    }
+
+    let passwordSha1: string
+
+    try {
+      passwordSha1 = await this.authProcessingService.hashPasswordWithSha1(email, payload.password)
+    } catch (error) {
+      await this.recordAttempt({
+        provider: 'local-login',
+        result: 'failed',
+        emailCandidate: email,
+        userId: user.id,
+        failureReason: 'sha1-processing-unavailable',
+      })
+      throw this.mapAuthProcessingError(error)
+    }
+
+    if (passwordSha1 !== user.localAuth.passwordSha1) {
+      await this.recordAttempt({
+        provider: 'local-login',
+        result: 'failed',
+        emailCandidate: email,
+        userId: user.id,
+        failureReason: 'invalid-local-credentials',
+      })
+      throw new UnauthorizedException({
+        code: 'local_auth_invalid_credentials',
+        message: 'Email or password is incorrect',
+      })
+    }
+
+    const sessionUser = this.toSessionUser(user.toObject())
+    const issuedSession = await this.issueTokenPair(sessionUser, 'local-login')
+
+    await this.recordAttempt({
+      provider: 'local-login',
+      result: 'succeeded',
+      emailCandidate: email,
+      userId: sessionUser.id,
+      sessionId: issuedSession.sessionId,
+    })
+
+    return issuedSession
+  }
+
+  async issueTokenPair(
+    user: SessionUser,
+    createdBy = 'google-login',
+  ): Promise<RefreshSessionResponse & { refreshToken: string; sessionId: string }> {
     const env = backendEnv()
     const issuedAt = new Date()
     const expiresAt = new Date(issuedAt.getTime() + env.REFRESH_TOKEN_TTL_SECONDS * 1000)
@@ -135,6 +342,7 @@ export class AuthService {
 
     return {
       refreshToken,
+      sessionId: refreshSession.id,
       ...this.buildRefreshSessionResponse(user, refreshSession.id),
     }
   }
@@ -289,9 +497,9 @@ export class AuthService {
   }
 
   async recordAttempt(payload: {
-    provider?: string
+    provider?: AuthProvider
     emailCandidate?: string
-    result: string
+    result: 'started' | 'succeeded' | 'failed' | 'cancelled' | 'issued' | 'renewed' | 'revoked'
     failureReason?: string
     userId?: string
     sessionId?: string
@@ -355,5 +563,19 @@ export class AuthService {
 
   private hashToken(token: string) {
     return createHash('sha256').update(token).digest('hex')
+  }
+
+  private mapAuthProcessingError(error: unknown) {
+    if (error instanceof AuthProcessingError) {
+      return new ServiceUnavailableException({
+        code: 'local_auth_sha1_unavailable',
+        message: error.message,
+      })
+    }
+
+    return new ServiceUnavailableException({
+      code: 'local_auth_processing_failed',
+      message: 'Local authentication processing is unavailable',
+    })
   }
 }

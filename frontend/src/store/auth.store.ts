@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import { getCurrentUser, logout, refreshSession } from '../services/auth.service'
+import { getCurrentUser, loginLocalAccount, logout, refreshSession, registerLocalAccount } from '../services/auth.service'
 import { setAccessToken, setAuthFailureHandler, setRefreshSessionHandler } from '../services/http'
-import { AuthUser } from '../types/auth'
+import { AuthUser, LoginLocalAuthRequest, RegisterLocalAuthRequest } from '../types/auth'
 
 type AuthStore = {
   currentUser: AuthUser | null
@@ -11,6 +11,8 @@ type AuthStore = {
   errorMessage: string | null
   hydrateSession: () => Promise<void>
   refreshSession: () => Promise<string | null>
+  registerLocalAccount: (payload: RegisterLocalAuthRequest) => Promise<void>
+  loginLocalAccount: (payload: LoginLocalAuthRequest) => Promise<void>
   setErrorMessage: (message: string | null) => void
   clearError: () => void
   logout: () => Promise<void>
@@ -49,6 +51,17 @@ export const useAuthStore = create<AuthStore>((set, get) => {
   setRefreshSessionHandler(refreshAccessToken)
   setAuthFailureHandler(clearSession)
 
+  const setAuthenticatedSession = (payload: { user: AuthUser; accessToken: string }) => {
+    setAccessToken(payload.accessToken)
+    set({
+      currentUser: payload.user,
+      accessToken: payload.accessToken,
+      isAuthenticated: true,
+      isHydrating: false,
+      errorMessage: null,
+    })
+  }
+
   return {
     currentUser: null,
     accessToken: null,
@@ -73,6 +86,14 @@ export const useAuthStore = create<AuthStore>((set, get) => {
       }
     },
     refreshSession: refreshAccessToken,
+    registerLocalAccount: async (payload) => {
+      const data = await registerLocalAccount(payload)
+      setAuthenticatedSession({ user: data.user, accessToken: data.accessToken })
+    },
+    loginLocalAccount: async (payload) => {
+      const data = await loginLocalAccount(payload)
+      setAuthenticatedSession({ user: data.user, accessToken: data.accessToken })
+    },
     setErrorMessage: (message) => set({ errorMessage: message }),
     clearError: () => set({ errorMessage: null }),
     logout: async () => {
