@@ -14,12 +14,12 @@ fi
 
 if [[ ! -f "$MODULE_PATH" ]]; then
   echo "Missing kernel module artifact: $MODULE_PATH" >&2
-  echo "Build the module first with a matching kernel build tree." >&2
+  echo "Build the module first with 'make driver'." >&2
   exit 1
 fi
 
 if [[ "$(id -u)" != "0" ]]; then
-  echo "load_module.sh requires root/privileged context to run insmod." >&2
+  echo "module_load.sh requires root privileges to run insmod." >&2
   exit 1
 fi
 

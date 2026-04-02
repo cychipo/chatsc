@@ -17,18 +17,15 @@
 
 - User-space application: `app/client/`, `app/server/`
 - Kernel module: `driver/module/`
-- Container and runtime setup: `docker/dev/`, `docker/runtime/`
+- Host-native runtime helpers: `scripts/`
 - Test assets: `tests/integration/`, `tests/e2e/`
 
 ## Phase 1: Setup (Shared Infrastructure)
 
 **Purpose**: Khởi tạo cấu trúc dự án và tài liệu build/runtime dùng chung
 
-- [x] T001 Create source directory structure in app/client/, app/server/, driver/module/, docker/dev/, docker/runtime/, tests/integration/, and tests/e2e/
+- [x] T001 Create source directory structure in app/client/, app/server/, driver/module/, scripts/, tests/integration/, and tests/e2e/
 - [x] T002 Create top-level build orchestration in Makefile
-- [x] T003 [P] Create development container definition in docker/dev/Dockerfile
-- [x] T004 [P] Create runtime container composition in docker/runtime/docker-compose.yml
-- [x] T005 [P] Create shared environment example in docker/runtime/.env.example
 
 ---
 
@@ -41,9 +38,9 @@
 - [x] T006 Create shared protocol definitions for message and processing modes in app/shared/protocol.h
 - [x] T007 [P] Create common build rules for client, server, and driver in app/Makefile and driver/module/Makefile
 - [x] T008 [P] Create driver interface header for device interactions in driver/module/device_contract.h
-- [x] T009 Create module lifecycle helper script in docker/runtime/load_module.sh
-- [x] T010 [P] Create module unload helper script in docker/runtime/unload_module.sh
-- [x] T011 [P] Create device mount and privilege guidance in docker/runtime/README.md
+- [x] T009 Create module lifecycle helper script in scripts/module_load.sh
+- [x] T010 [P] Create module unload helper script in scripts/module_unload.sh
+- [x] T011 [P] Create Linux host privilege guidance in README.md and driver/module/README.md
 - [x] T012 Create shared smoke test harness for build and runtime checks in tests/integration/test_smoke_setup.sh
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -52,26 +49,25 @@
 
 ## Phase 3: User Story 1 - Chuẩn bị môi trường phát triển thống nhất (Priority: P1) 🎯 MVP
 
-**Goal**: Cung cấp môi trường Ubuntu container có đủ công cụ build để developer build và chạy ứng dụng user-space thống nhất.
+**Goal**: Cung cấp môi trường Ubuntu/Linux host có đủ công cụ build để developer build và chạy ứng dụng user-space thống nhất.
 
-**Independent Test**: Khởi động container phát triển, xác nhận có đủ công cụ build và build được client/server hoàn toàn từ source trong container.
+**Independent Test**: Xác nhận host có đủ công cụ build và build được client/server hoàn toàn từ source trên host.
 
 ### Tests for User Story 1 ⚠️
 
-- [x] T013 [P] [US1] Create build environment verification test in tests/integration/test_dev_container_tools.sh
+- [x] T013 [P] [US1] Create host prerequisite verification test in tests/integration/test_dev_container_tools.sh
 - [x] T014 [P] [US1] Create user-space build verification test in tests/integration/test_user_space_build.sh
 
 ### Implementation for User Story 1
 
-- [x] T015 [P] [US1] Add required Ubuntu build tools to docker/dev/Dockerfile
-- [x] T016 [US1] Configure source mount and working directory in docker/runtime/docker-compose.yml
+- [x] T015 [P] [US1] Document required Ubuntu build tools in README.md
 - [x] T017 [P] [US1] Create client build target in app/client/Makefile
 - [x] T018 [P] [US1] Create server build target in app/server/Makefile
 - [x] T019 [US1] Create client application skeleton in app/client/client.c
 - [x] T020 [US1] Create server application skeleton in app/server/server.c
-- [x] T021 [US1] Document developer startup and build flow in docker/dev/README.md
+- [x] T021 [US1] Document developer startup and build flow in README.md and app/server/README.md
 
-**Checkpoint**: User Story 1 should let a developer build the user-space application entirely inside the containerized development environment.
+**Checkpoint**: User Story 1 should let a developer build the user-space application entirely on the Ubuntu/Linux host environment.
 
 ---
 
@@ -93,9 +89,9 @@
 - [x] T026 [US2] Implement module init and exit lifecycle handlers in driver/module/chat_driver.c
 - [x] T027 [US2] Implement character device registration and device node exposure in driver/module/chat_driver.c
 - [x] T028 [US2] Configure kernel module build artifact target in driver/module/Makefile
-- [x] T029 [US2] Configure privileged runtime service for module operations in docker/runtime/docker-compose.yml
-- [x] T030 [US2] Implement module load workflow in docker/runtime/load_module.sh
-- [x] T031 [US2] Implement safe module unload workflow in docker/runtime/unload_module.sh
+- [x] T029 [US2] Configure host-native module operation targets in Makefile
+- [x] T030 [US2] Implement module load workflow in scripts/module_load.sh
+- [x] T031 [US2] Implement safe module unload workflow in scripts/module_unload.sh
 - [x] T032 [US2] Document module load, verify, and unload steps in driver/module/README.md
 
 **Checkpoint**: User Story 2 should let the team manage the full module lifecycle and verify device node readiness independently of socket chat.
@@ -129,9 +125,9 @@
 
 ---
 
-## Phase 6: User Story 4 - Truyền message chat giữa client và server qua mạng container (Priority: P2)
+## Phase 6: User Story 4 - Truyền message chat giữa client và server qua mạng host (Priority: P2)
 
-**Goal**: Tích hợp socket chat giữa client và server trong mạng container, với dữ liệu hiển thị phản ánh kết quả sau bước xử lý bởi driver.
+**Goal**: Tích hợp socket chat giữa client và server trên Ubuntu/Linux host, với dữ liệu hiển thị phản ánh kết quả sau bước xử lý bởi driver.
 
 **Independent Test**: Khởi động server, kết nối client, gửi message chat, và xác nhận phản hồi hiển thị ở client khớp với dữ liệu đã đi qua driver.
 
@@ -146,7 +142,7 @@
 - [x] T047 [P] [US4] Implement client socket session flow in app/client/client.c
 - [x] T048 [US4] Implement server-side response handling contract in app/server/server_protocol.c
 - [x] T049 [US4] Integrate device processing into client chat send flow in app/client/client.c
-- [x] T050 [US4] Configure client and server services on the container network in docker/runtime/docker-compose.yml
+- [x] T050 [US4] Configure client and server startup flow on the host network in Makefile and README.md
 - [x] T051 [US4] Document chat startup and connectivity flow in app/server/README.md
 
 **Checkpoint**: User Story 4 should deliver an end-to-end chat session over sockets with driver-mediated processing visible to the user.
@@ -182,11 +178,9 @@
 
 - [x] T059 [P] Validate full quickstart flow against specs/001-socket-chat-kmod/quickstart.md
 - [x] T060 [P] Run full integration and e2e test suite from tests/integration/ and tests/e2e/
-- [x] T061 Review build, runtime, and test commands for consistency in Makefile and docker/runtime/docker-compose.yml
+- [x] T061 Review build, runtime, and test commands for consistency in Makefile, scripts/, and docs
 - [x] T062 Perform cross-story cleanup for shared protocol and driver interfaces in app/shared/protocol.h and driver/module/device_contract.h
-- [x] T063 Extend Docker Desktop kernel metadata reporting and prepared-tree automation in docker/runtime/check_kernel_tree.sh, docker/runtime/docker_driver_env_report.sh, and docker/runtime/prepare_kernel_tree.sh
-- [x] T064 Update Docker kernel prepare workflow in Makefile, docker/runtime/docker-compose.yml, README.md, docker/runtime/README.md, driver/module/README.md, docs/demo-runbook.md, and docs/troubleshooting.md
-- [x] T065 Add regression checks for Docker kernel prepare/report flow in tests/integration/test_module_build.sh, tests/integration/test_module_lifecycle.sh, tests/integration/test_socket_connectivity.sh, and tests/e2e/test_demo_flow.sh
+- [x] T063 Refactor the project from Docker-first workflow to Ubuntu/Linux host workflow in Makefile, README.md, docs/, tests/, and specs/
 
 ---
 

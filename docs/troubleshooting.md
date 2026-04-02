@@ -1,44 +1,42 @@
 # Troubleshooting Guide
 
 ## Device not found
-- Confirm the module is loaded
-- Confirm `/dev/device` exists
-- Confirm the container has `/dev` mounted
-- The client no longer falls back to user-space processing; if the device is missing, auth/chat processing must fail
+- Confirm module đã được load
+- Confirm `/dev/device` tồn tại
+- Confirm client đang trỏ đúng `DEVICE_PATH`
+- Client không còn fallback sang user-space; nếu device thiếu thì auth/chat sẽ fail
 
 ## Register failed
-- Confirm username only uses letters, numbers, `_`, `-`, or `.`
-- Confirm `users.db` is writable by the server process
-- If username already exists, choose `login` instead
+- Confirm username chỉ dùng chữ, số, `_`, `-`, hoặc `.`
+- Confirm `users.db` writable bởi process server
+- Nếu username đã tồn tại, dùng `login` thay vì `register`
 
 ## Login failed
-- Confirm the username already exists in `users.db`
-- Confirm the driver SHA1 path is working because password hashing goes through `/dev/device`
-- If the same user is already logged in elsewhere, logout first
+- Confirm username đã tồn tại trong `users.db`
+- Confirm driver SHA1 path hoạt động vì password hashing đi qua `/dev/device`
+- Nếu cùng user đã login ở terminal khác, logout trước
 
 ## Peer selection failed
-- Confirm the target username exists in `users.db`
-- Confirm the other user is already logged in and online
-- Open a second client terminal before selecting peer
+- Confirm target username tồn tại trong `users.db`
+- Confirm user kia đang online
+- Mở terminal client thứ hai trước khi chọn peer
 
 ## Module build failed
-- Run `make docker-driver-env-report` first
-- Then run `make docker-driver-check`
-- Confirm the kernel release printed by the preflight matches the build tree you plan to use
-- If `/lib/modules/<release>/build` is missing or incomplete on Docker Desktop, run `make docker-driver-prepare`
-- `kheaders.tar.xz` alone is not a usable build tree; the repo requires top-level `Makefile`, `scripts/`, `.config`, and `include/generated/`
-- If `CONFIG_MODVERSIONS=y` and `Module.symvers` cannot be recovered, a full matching kernel build is required and the repo will fail fast instead of building blindly
-- If you already have a valid prepared tree, provide it with `KERNEL_BUILD_DIR=/path/to/tree`
+- Confirm host đã cài `linux-headers-$(uname -r)`
+- Confirm `/lib/modules/$(uname -r)/build` tồn tại
+- Nếu `KDIR` custom được dùng, confirm path đó có `Makefile`, `scripts/`, `.config`, và `include/generated/`
+- Nếu build báo mismatch, kiểm tra kernel đang chạy có khớp với headers đã cài không
 
 ## Module load failed
-- Confirm `build/chat_driver.ko` exists or pass `MODULE_PATH=/path/to/chat_driver.ko`
-- Confirm you are using a root/privileged context for `make docker-load`
-- Inspect `dmesg` for vermagic or compatibility errors
+- Confirm `build/chat_driver.ko` tồn tại hoặc pass `MODULE_PATH=/path/to/chat_driver.ko`
+- Confirm bạn chạy `sudo make load`
+- Inspect `dmesg | tail` để xem vermagic hoặc symbol errors
 
 ## Socket connection failed
-- Confirm server is listening on the expected port
-- Confirm client and server share the same Docker network
-- Confirm the server started with a writable `users.db` path
+- Confirm server đang lắng nghe đúng port
+- Confirm client kết nối đúng `HOST` và `PORT`
+- Confirm server được chạy ở thư mục có quyền ghi `users.db`
 
 ## Unload blocked
-- Confirm no process is still using `/dev/device`
+- Confirm không còn process nào đang dùng `/dev/device`
+- Nếu có `lsof`, dùng `lsof /dev/device` để tìm process đang giữ device

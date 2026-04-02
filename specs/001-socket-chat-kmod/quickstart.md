@@ -1,4 +1,4 @@
-# Quickstart: Hệ thống chat Socket với Docker và Kernel Module
+# Quickstart: Hệ thống chat Socket với Linux Kernel Module
 
 ## Mục tiêu
 
@@ -6,22 +6,23 @@ Dựng nhanh môi trường demo cho luồng:
 
 `Client -> /dev/device -> Driver -> Client`
 
-và xác nhận tích hợp chat qua socket trong mạng container.
+và xác nhận tích hợp chat qua socket trên host Ubuntu/Linux.
 
 ## Điều kiện đầu vào
 
-- Có Docker Desktop.
+- Có Ubuntu host hoặc VPS Ubuntu.
 - Có source code dự án.
 - Có feature artifacts trong thư mục `specs/001-socket-chat-kmod/`.
+- Có `linux-headers-$(uname -r)` khớp với kernel đang chạy.
 
 ## Luồng thực hiện đề xuất
 
-1. Chuẩn bị môi trường phát triển Ubuntu container với đầy đủ công cụ build.
-2. Build client và server trong container.
-3. Build driver thành module sẵn sàng nạp vào kernel đích.
-4. Thực hiện quy trình nạp driver từ context được cấp quyền phù hợp.
+1. Cài công cụ build trên host Ubuntu.
+2. Build client và server trực tiếp trên host.
+3. Build driver thành module sẵn sàng nạp vào host kernel.
+4. Nạp driver với quyền root phù hợp.
 5. Xác nhận driver đã sẵn sàng và device node đã xuất hiện.
-6. Khởi động server chat.
+6. Khởi động server chat trên host.
 7. Khởi động client và gửi message thử nghiệm.
 8. Xác nhận client nhận lại kết quả đã đi qua driver.
 9. Kiểm tra log cho các mốc load, open, write, read, close và unload.
@@ -30,9 +31,9 @@ và xác nhận tích hợp chat qua socket trong mạng container.
 ## Bộ kiểm thử smoke đề xuất
 
 ### Smoke 1: Môi trường build
-- Khởi động container phát triển.
-- Xác nhận công cụ build sẵn sàng.
+- Xác nhận host có đủ build tools.
 - Hoàn tất một lần build ứng dụng.
+- Hoàn tất một lần build module.
 
 ### Smoke 2: Module lifecycle
 - Nạp driver.
@@ -54,8 +55,8 @@ và xác nhận tích hợp chat qua socket trong mạng container.
 
 ## Kết quả mong đợi
 
-- Môi trường phát triển dựng được mà không phụ thuộc host toolchain.
-- Driver có thể được nạp và gỡ theo quy trình kiểm soát.
+- Môi trường phát triển dựng được trực tiếp trên host Ubuntu/VPS.
+- Driver có thể được nạp và gỡ theo quy trình kiểm soát trên host kernel.
 - Device node là điểm giao tiếp ổn định giữa client và driver.
 - Luồng chat đầu-cuối được demo thành công.
 - Log đủ để chẩn đoán các lỗi tích hợp phổ biến.

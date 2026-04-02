@@ -1,50 +1,49 @@
-# User Stories — Hệ thống chat Socket sử dụng Docker và Linux Kernel Module
+# User Stories — Hệ thống chat Socket sử dụng Linux Kernel Module
 
-## Epic 1: Thiết lập môi trường phát triển trong Docker
+## Epic 1: Thiết lập môi trường phát triển trên Ubuntu/Linux
 
-### US-01: Chuẩn bị container Ubuntu cho phát triển
+### US-01: Chuẩn bị môi trường Ubuntu cho phát triển
 **Là một** developer  
-**Tôi muốn** có container Ubuntu được cấu hình sẵn môi trường phát triển  
-**Để** tôi có thể build, chạy và debug Client/Server ngay trong container.
+**Tôi muốn** có môi trường Ubuntu/Linux host được cấu hình sẵn cho phát triển  
+**Để** tôi có thể build, chạy và debug Client/Server trực tiếp trên host.
 
 **Acceptance Criteria**
-- Container Ubuntu khởi động được bằng Docker/Docker Compose.
-- Container có đầy đủ công cụ: `make`, `gcc`, `g++`, `libc`, `bash`, `iproute2`, `net-tools`.
+- Host Ubuntu có đầy đủ công cụ: `make`, `gcc`, `g++`, `libc`, `bash`, `iproute2`, `net-tools`.
 - Có thể chạy lệnh kiểm tra phiên bản như `gcc --version`, `make --version`.
-- Source code dự án được mount hoặc copy vào container để phát triển.
+- Source code dự án sẵn sàng trên host để phát triển.
 
-### US-02: Build mã nguồn ứng dụng trong container
+### US-02: Build mã nguồn ứng dụng trên host
 **Là một** developer  
-**Tôi muốn** build Client và Server trực tiếp bên trong container  
-**Để** đảm bảo môi trường build thống nhất giữa các máy.
+**Tôi muốn** build Client và Server trực tiếp trên host  
+**Để** đảm bảo môi trường build thống nhất giữa các máy Ubuntu/VPS.
 
 **Acceptance Criteria**
 - Có `Makefile` hoặc script build cho Client/Server.
-- Lệnh build chạy thành công trong container Ubuntu.
+- Lệnh build chạy thành công trên Ubuntu host.
 - Binary đầu ra được tạo đúng vị trí.
-- Không phụ thuộc vào toolchain cài trên máy host.
+- Không phụ thuộc Docker để build ứng dụng.
 
 ### US-03: Build mã nguồn Linux Kernel Module trong môi trường phù hợp
 **Là một** developer  
 **Tôi muốn** build driver kernel module với đúng header/kernel dependency  
-**Để** module có thể nạp vào kernel của Docker Desktop VM.
+**Để** module có thể nạp vào host kernel.
 
 **Acceptance Criteria**
 - Có hướng dẫn hoặc script build module.
 - Module build ra file `.ko`.
 - Phiên bản kernel headers tương thích với kernel đích.
-- Nếu build không thực hiện trực tiếp trong container app thì có mô tả rõ môi trường build tương ứng.
+- Có mô tả rõ yêu cầu môi trường build trên host.
 
-## Epic 2: Nạp Linux Kernel Module từ container vào Docker Desktop VM
+## Epic 2: Nạp Linux Kernel Module trên host
 
-### US-04: Nạp module từ container vào kernel của Docker Desktop VM
+### US-04: Nạp module vào host kernel
 **Là một** developer  
-**Tôi muốn** nạp driver kernel module từ container  
-**Để** container có thể giao tiếp với driver chạy trong nhân của Docker Desktop VM.
+**Tôi muốn** nạp driver kernel module trên host  
+**Để** ứng dụng có thể giao tiếp với driver chạy trong nhân Linux.
 
 **Acceptance Criteria**
-- Có cơ chế `insmod`/`modprobe` từ container hoặc qua container đặc quyền.
-- Container được cấp quyền phù hợp (`--privileged`, `cap_add`, mount `/lib/modules`, v.v. nếu cần).
+- Có cơ chế `insmod`/`modprobe` trên host.
+- Người dùng biết cần quyền root phù hợp.
 - Sau khi nạp, có thể kiểm tra module bằng `lsmod`.
 - Có thể xem log kernel bằng `dmesg` để xác nhận module đã load thành công.
 
@@ -62,11 +61,11 @@
 ### US-06: Tạo device file để user-space truy cập driver
 **Là một** developer  
 **Tôi muốn** driver tạo hoặc expose device node như `/dev/device`  
-**Để** Client trong container có thể đọc/ghi dữ liệu qua character device.
+**Để** Client có thể đọc/ghi dữ liệu qua character device.
 
 **Acceptance Criteria**
 - Sau khi module load, tồn tại device node `/dev/device` hoặc node tương đương.
-- Container Client có thể truy cập device node này.
+- Client có thể truy cập device node này.
 - Quyền đọc/ghi của device được cấu hình hợp lý.
 - Có thể kiểm tra bằng `ls -l /dev/device`.
 
@@ -119,11 +118,11 @@
 ### US-11: Tích hợp luồng chat với socket giữa Client và Server
 **Là một** người dùng chat  
 **Tôi muốn** message được truyền qua socket giữa Client và Server  
-**Để** hai đầu cuối có thể trao đổi dữ liệu qua mạng container.
+**Để** hai đầu cuối có thể trao đổi dữ liệu qua mạng host.
 
 **Acceptance Criteria**
 - Server lắng nghe trên một cổng xác định.
-- Client kết nối được đến Server trong mạng Docker.
+- Client kết nối được đến Server trên host hoặc VPS.
 - Message gửi từ Client đến Server và phản hồi thành công.
 - Trước hoặc sau khi truyền socket, message đi qua driver theo thiết kế hệ thống.
 
@@ -135,7 +134,7 @@
 **Acceptance Criteria**
 - Client gửi message đầu vào.
 - Message đi qua `/dev/device`.
-- Driver trong kernel VM xử lý dữ liệu.
+- Driver trong kernel xử lý dữ liệu.
 - Kết quả được trả lại cho Client và hiển thị đúng.
 - Có test demo end-to-end cho toàn bộ luồng.
 
@@ -152,13 +151,13 @@
 - Có log khi thực hiện Substitution và SHA1.
 - Có thể xem log qua `dmesg`.
 
-### US-14: Kiểm thử tương thích giữa container và kernel module
+### US-14: Kiểm thử tương thích giữa ứng dụng và kernel module
 **Là một** tester  
-**Tôi muốn** xác nhận container Ubuntu truy cập được driver trong VM  
-**Để** đảm bảo cơ chế tích hợp Docker + kernel module hoạt động ổn định.
+**Tôi muốn** xác nhận ứng dụng Ubuntu truy cập được driver trên host kernel  
+**Để** đảm bảo cơ chế tích hợp Linux host + kernel module hoạt động ổn định.
 
 **Acceptance Criteria**
-- Có checklist kiểm thử mount device vào container.
+- Có checklist kiểm thử truy cập device.
 - Có test khi module chưa load, load thành công, unload.
 - Có test cho lỗi permission hoặc sai kernel version.
 - Có tài liệu cách xử lý các lỗi tích hợp phổ biến.
@@ -169,7 +168,7 @@
 **Để** tôi có thể dựng môi trường và demo dự án nhanh chóng.
 
 **Acceptance Criteria**
-- Có hướng dẫn build image/container.
+- Có hướng dẫn cài dependencies trên Ubuntu.
 - Có hướng dẫn build/load/unload module.
 - Có hướng dẫn chạy Server và Client.
 - Có ví dụ input/output minh họa luồng `Client -> /dev/device -> Driver -> Client`.

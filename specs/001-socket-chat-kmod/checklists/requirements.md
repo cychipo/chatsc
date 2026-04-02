@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Hệ thống chat Socket với Docker và Kernel Module
+# Specification Quality Checklist: Hệ thống chat Socket với Linux Kernel Module
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-04-02
@@ -32,4 +32,4 @@
 ## Notes
 
 - Validation passed on first iteration.
-- Scope is bounded to local development and demo usage on Docker Desktop with a kernel-resident driver.
+- Scope is bounded to local development and demo usage on Ubuntu/Linux host with a kernel-resident driver.

@@ -4,7 +4,7 @@ Auto-generated from all feature plans. Last updated: 2026-04-02
 
 ## Active Technologies
 
-- C cho client, server và kernel module; môi trường phát triển Ubuntu container + Docker Desktop, Docker/Compose workflow, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
+- C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
 
 ## Project Structure
 
@@ -15,15 +15,12 @@ tests/
 
 ## Commands
 
-# Add commands for C cho client, server và kernel module; môi trường phát triển Ubuntu container
+# Add commands for C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host
 
 ## Code Style
 
-C cho client, server và kernel module; môi trường phát triển Ubuntu container: Follow standard conventions
+C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host: Follow standard conventions
 
 ## Recent Changes
 
-- 001-socket-chat-kmod: Added C cho client, server và kernel module; môi trường phát triển Ubuntu container + Docker Desktop, Docker/Compose workflow, GNU build tools, Linux kernel module toolchain
-
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+- 001-socket-chat-kmod: Migrated workflow from Docker-first to Ubuntu/Linux host build, run, and kernel module lifecycle

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-grep -q "build-essential" docker/dev/Dockerfile
-grep -q "gcc" docker/dev/Dockerfile
-grep -q "make" docker/dev/Dockerfile
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT_DIR"
 
-echo "dev container tools declared"
+grep -q 'sudo apt install -y' README.md
+grep -q 'build-essential' README.md
+grep -q 'linux-headers-\$(uname -r)' README.md
+
+echo "host prerequisites declared"

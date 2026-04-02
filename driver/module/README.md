@@ -7,58 +7,25 @@ The driver is responsible for:
 - SHA1 hashing for login credentials
 - request/response processing through `/dev/device`
 
-## Build
-
-### Native Linux host
+## Build on native Linux host
 
 ```bash
 make -C driver/module
 ```
 
-This expects a matching kernel build tree at `/lib/modules/$(uname -r)/build`.
-
-### Docker Desktop / LinuxKit
-
-Inspect LinuxKit metadata first:
+Hoặc từ repo root:
 
 ```bash
-make docker-driver-env-report
+make driver
 ```
 
-Then run the Docker preflight:
-
-```bash
-make docker-driver-check
-```
-
-If no prepared tree is already available, try assembling one from exact source, LinuxKit patches, and `/proc/config.gz`:
-
-```bash
-make docker-driver-prepare
-```
-
-Then build the module:
-
-```bash
-make docker-driver
-```
-
-You can still override with an explicit prepared tree:
-
-```bash
-make docker-driver KERNEL_BUILD_DIR=/path/to/prepared/kernel/tree
-```
-
-`kheaders.tar.xz` is only a supplemental header bundle. It is not treated as a valid `KDIR` unless a full tree also has top-level `Makefile`, `scripts/`, `.config`, and `include/generated/`.
-If `CONFIG_MODVERSIONS=y` and a matching `Module.symvers` cannot be recovered, module build fails fast with an explanatory error.
+Điều này yêu cầu host có matching kernel build tree tại `/lib/modules/$(uname -r)/build`.
 
 ## Load
 
 ```bash
-make docker-load
+sudo make load
 ```
-
-The load script now requires a root/privileged context directly; it does not rely on `sudo`.
 
 ## Verify
 
@@ -75,7 +42,7 @@ The load script now requires a root/privileged context directly; it does not rel
 ## Unload
 
 ```bash
-make docker-unload
+sudo make unload
 ```
 
 If unload fails, confirm no client process is still using `/dev/device`.
