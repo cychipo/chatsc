@@ -76,10 +76,16 @@ Hoặc:
 
 ## Trong giao diện client
 
-- `register` để tạo user mới
-- `login` để vào chat
-- nhập `chat with username>` để chọn người nhận
-- gõ nội dung chat rồi Enter
+- chọn `register` để tạo user mới
+- chọn `login` để vào chat
+- nhập ở `chat with username>` để chọn người nhận
+- khi vào chat, client sẽ hiện một khối header rõ context hiện tại, ví dụ:
+  - `[chat] user=<your-user>  peer=<target-user>`
+  - `[tips] /switch để đổi người chat, /quit để thoát`
+- nhập tin nhắn ở `message>` rồi Enter
+- history chat được rút gọn để dễ quét mắt:
+  - tin nhắn đến hiện dạng `<- username  nội dung`
+  - tin nhắn gửi thành công hiện dạng `-> username  nội dung`
 - gõ `/switch` để đổi người chat
 - gõ `/quit` để thoát
 

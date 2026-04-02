@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,12 +15,137 @@ typedef struct {
     int sockfd;
     const char *device_path;
     char username[CHAT_MAX_USERNAME];
+    char current_peer[CHAT_MAX_USERNAME];
     int running;
     pthread_mutex_t ack_lock;
     pthread_cond_t ack_cond;
     chat_response_t last_ack;
     int ack_ready;
+    pthread_mutex_t ui_lock;
+    char active_prompt[64];
+    int prompt_active;
+    int use_color;
 } client_runtime_t;
+
+static const char *ui_style(client_runtime_t *runtime, const char *code) {
+    return runtime->use_color ? code : "";
+}
+
+static void ui_print_locked(client_runtime_t *runtime, const char *prefix, const char *fmt, va_list args) {
+    if (runtime->prompt_active) {
+        printf("\r\033[2K");
+    }
+
+    if (prefix != NULL && prefix[0] != '\0') {
+        printf("%s", prefix);
+    }
+
+    vprintf(fmt, args);
+    printf("\n");
+
+    if (runtime->prompt_active && runtime->active_prompt[0] != '\0') {
+        printf("%s", runtime->active_prompt);
+    }
+
+    fflush(stdout);
+}
+
+static void ui_print_line(client_runtime_t *runtime, const char *fmt, ...) {
+    va_list args;
+
+    pthread_mutex_lock(&runtime->ui_lock);
+    va_start(args, fmt);
+    ui_print_locked(runtime, NULL, fmt, args);
+    va_end(args);
+    pthread_mutex_unlock(&runtime->ui_lock);
+}
+
+static void ui_print_tagged(client_runtime_t *runtime, const char *tag, const char *color, const char *fmt, ...) {
+    char prefix[64];
+    va_list args;
+
+    snprintf(prefix, sizeof(prefix), "%s[%s]%s ", ui_style(runtime, color), tag, ui_style(runtime, "\033[0m"));
+
+    pthread_mutex_lock(&runtime->ui_lock);
+    va_start(args, fmt);
+    ui_print_locked(runtime, prefix, fmt, args);
+    va_end(args);
+    pthread_mutex_unlock(&runtime->ui_lock);
+}
+
+static void ui_print_banner(client_runtime_t *runtime, const char *host, int port, const char *device_path) {
+    ui_print_line(runtime, "%s========================================%s",
+                  ui_style(runtime, "\033[1m"), ui_style(runtime, "\033[0m"));
+    ui_print_line(runtime, "%s Socket Chat Client%s",
+                  ui_style(runtime, "\033[1;36m"), ui_style(runtime, "\033[0m"));
+    ui_print_line(runtime, " device : %s", device_path);
+    ui_print_line(runtime, " server : %s:%d", host, port);
+    ui_print_line(runtime, "%s========================================%s",
+                  ui_style(runtime, "\033[1m"), ui_style(runtime, "\033[0m"));
+}
+
+static void ui_print_menu(client_runtime_t *runtime) {
+    ui_print_line(runtime, "");
+    ui_print_line(runtime, "%s[menu]%s", ui_style(runtime, "\033[1m"), ui_style(runtime, "\033[0m"));
+    ui_print_line(runtime, "  1) login");
+    ui_print_line(runtime, "  2) register");
+    ui_print_line(runtime, "  3) exit");
+}
+
+static void ui_print_divider(client_runtime_t *runtime) {
+    ui_print_line(runtime, "%s----------------------------------------%s",
+                  ui_style(runtime, "\033[2m"), ui_style(runtime, "\033[0m"));
+}
+
+static void ui_print_chat_header(client_runtime_t *runtime) {
+    ui_print_divider(runtime);
+    ui_print_line(runtime, "%s[chat]%s user=%s  peer=%s",
+                  ui_style(runtime, "\033[1m"), ui_style(runtime, "\033[0m"),
+                  runtime->username[0] != '\0' ? runtime->username : "-",
+                  runtime->current_peer[0] != '\0' ? runtime->current_peer : "-");
+    ui_print_line(runtime, "%s[tips]%s /switch để đổi người chat, /quit để thoát",
+                  ui_style(runtime, "\033[2;36m"), ui_style(runtime, "\033[0m"));
+    ui_print_divider(runtime);
+}
+
+static void ui_print_received_message(client_runtime_t *runtime, const char *from_username, const char *message) {
+    ui_print_line(runtime, "%s<- %s%s  %s",
+                  ui_style(runtime, "\033[1;36m"), from_username,
+                  ui_style(runtime, "\033[0m"), message);
+}
+
+static void ui_print_sent_message(client_runtime_t *runtime, const char *to_username, const char *message) {
+    ui_print_line(runtime, "%s-> %s%s  %s",
+                  ui_style(runtime, "\033[1;32m"), to_username,
+                  ui_style(runtime, "\033[0m"), message);
+}
+
+static void ui_prompt_begin(client_runtime_t *runtime, const char *label) {
+    pthread_mutex_lock(&runtime->ui_lock);
+    snprintf(runtime->active_prompt, sizeof(runtime->active_prompt), "%s", label);
+    runtime->prompt_active = 1;
+    printf("%s", label);
+    fflush(stdout);
+    pthread_mutex_unlock(&runtime->ui_lock);
+}
+
+static void ui_prompt_end(client_runtime_t *runtime) {
+    pthread_mutex_lock(&runtime->ui_lock);
+    runtime->prompt_active = 0;
+    runtime->active_prompt[0] = '\0';
+    pthread_mutex_unlock(&runtime->ui_lock);
+}
+
+static void prompt_line(client_runtime_t *runtime, const char *label, char *buffer, size_t size) {
+    ui_prompt_begin(runtime, label);
+    if (fgets(buffer, (int)size, stdin) == NULL) {
+        buffer[0] = '\0';
+        ui_prompt_end(runtime);
+        return;
+    }
+    buffer[strcspn(buffer, "\n")] = '\0';
+    ui_prompt_end(runtime);
+}
 
 static int connect_to_server(const char *host, int port) {
     int sockfd = -1;
@@ -86,16 +212,6 @@ static int write_full(int fd, const void *buffer, size_t size) {
     return 0;
 }
 
-static void prompt_line(const char *label, char *buffer, size_t size) {
-    printf("%s", label);
-    fflush(stdout);
-    if (fgets(buffer, (int)size, stdin) == NULL) {
-        buffer[0] = '\0';
-        return;
-    }
-    buffer[strcspn(buffer, "\n")] = '\0';
-}
-
 static int process_with_driver(const char *device_path, unsigned int message_id, request_type_t request_type,
                                processing_mode_t mode, const char *username, const char *peer_username,
                                const char *auth_payload, const char *payload, char *output, size_t output_size) {
@@ -151,11 +267,10 @@ static void *receiver_thread_main(void *arg) {
             if (process_with_driver(runtime->device_path, response.message_id, REQUEST_CHAT_MESSAGE,
                                     PROCESS_SUBSTITUTION_DECRYPT, runtime->username, response.from_username,
                                     NULL, response.payload, plaintext, sizeof(plaintext)) == 0) {
-                printf("\n%s> %s\n", response.from_username, plaintext);
+                ui_print_received_message(runtime, response.from_username, plaintext);
             } else {
-                printf("\n%s> [decrypt failed]\n", response.from_username);
+                ui_print_tagged(runtime, "error", "\033[1;31m", "message from %s could not be decrypted", response.from_username);
             }
-            fflush(stdout);
         } else {
             pthread_mutex_lock(&runtime->ack_lock);
             runtime->last_ack = response;
@@ -179,7 +294,7 @@ static int submit_auth_request(client_runtime_t *runtime, unsigned int *message_
 
     if (process_with_driver(runtime->device_path, (*message_id)++, type, PROCESS_SHA1,
                             username, NULL, password, NULL, digest, sizeof(digest)) != 0) {
-        fprintf(stderr, "driver auth hashing failed\n");
+        ui_print_tagged(runtime, "error", "\033[1;31m", "driver auth hashing failed");
         return -1;
     }
 
@@ -199,15 +314,17 @@ static int select_peer(client_runtime_t *runtime, unsigned int *message_id, char
     chat_request_t request;
     chat_response_t response;
 
+    ui_print_tagged(runtime, "info", "\033[1;34m", "enter a username to start chatting");
+
     while (1) {
-        prompt_line("chat with username> ", peer_username, peer_size);
+        prompt_line(runtime, "chat with username> ", peer_username, peer_size);
         if (peer_username[0] == '\0') {
             continue;
         }
 
         if (format_device_request(&request, (*message_id)++, REQUEST_CHAT_SELECT_PEER, PROCESS_SUBSTITUTION,
                                   runtime->username, peer_username, NULL, NULL, NULL) != 0) {
-            printf("peer không hợp lệ\n");
+            ui_print_tagged(runtime, "error", "\033[1;31m", "peer không hợp lệ");
             continue;
         }
         if (send_request_and_wait_ack(runtime, &request, &response) != 0) {
@@ -215,11 +332,12 @@ static int select_peer(client_runtime_t *runtime, unsigned int *message_id, char
         }
 
         if (response.status == STATUS_OK) {
-            printf("chatting with %s\n", peer_username);
+            snprintf(runtime->current_peer, sizeof(runtime->current_peer), "%s", peer_username);
+            ui_print_chat_header(runtime);
             return 0;
         }
 
-        printf("select peer failed: %s\n", response.payload);
+        ui_print_tagged(runtime, "error", "\033[1;31m", "select peer failed: %s", response.payload);
     }
 }
 
@@ -233,11 +351,13 @@ static int chat_loop(client_runtime_t *runtime, unsigned int *message_id, char *
         chat_response_t response;
         char encrypted[CHAT_MAX_RESULT];
 
-        prompt_line("you> ", line, sizeof(line));
+        prompt_line(runtime, "message> ", line, sizeof(line));
         if (line[0] == '\0') {
             continue;
         }
         if (strcmp(line, "/switch") == 0) {
+            runtime->current_peer[0] = '\0';
+            ui_print_tagged(runtime, "info", "\033[1;34m", "switching peer");
             return 0;
         }
         if (strcmp(line, "/quit") == 0) {
@@ -252,13 +372,13 @@ static int chat_loop(client_runtime_t *runtime, unsigned int *message_id, char *
 
         if (process_with_driver(runtime->device_path, *message_id, REQUEST_CHAT_MESSAGE, PROCESS_SUBSTITUTION,
                                 runtime->username, peer_username, NULL, line, encrypted, sizeof(encrypted)) != 0) {
-            fprintf(stderr, "driver message processing failed\n");
+            ui_print_tagged(runtime, "error", "\033[1;31m", "driver message processing failed");
             continue;
         }
 
         if (format_device_request(&request, (*message_id)++, REQUEST_CHAT_MESSAGE, PROCESS_SUBSTITUTION,
                                   runtime->username, peer_username, NULL, encrypted, line) != 0) {
-            fprintf(stderr, "invalid chat request\n");
+            ui_print_tagged(runtime, "error", "\033[1;31m", "invalid chat request");
             continue;
         }
         if (send_request_and_wait_ack(runtime, &request, &response) != 0) {
@@ -266,11 +386,12 @@ static int chat_loop(client_runtime_t *runtime, unsigned int *message_id, char *
         }
 
         if (response.status == STATUS_DELIVERED) {
-            printf("you> %s\n", line);
+            ui_print_sent_message(runtime, peer_username, line);
         } else {
-            printf("send failed: %s\n", response.payload);
+            ui_print_tagged(runtime, "error", "\033[1;31m", "send failed: %s", response.payload);
             if (response.status == STATUS_PEER_OFFLINE || response.status == STATUS_USER_NOT_FOUND) {
                 peer_username[0] = '\0';
+                runtime->current_peer[0] = '\0';
                 return 0;
             }
         }
@@ -293,22 +414,22 @@ int main(int argc, char **argv) {
     if (runtime.sockfd < 0) {
         return 1;
     }
-    fprintf(stderr, "socket connected\n");
     runtime.device_path = device_path;
     runtime.running = 1;
+    runtime.use_color = isatty(STDOUT_FILENO) ? 1 : 0;
     pthread_mutex_init(&runtime.ack_lock, NULL);
     pthread_cond_init(&runtime.ack_cond, NULL);
+    pthread_mutex_init(&runtime.ui_lock, NULL);
 
     if (pthread_create(&receiver_thread, NULL, receiver_thread_main, &runtime) != 0) {
         close(runtime.sockfd);
+        pthread_mutex_destroy(&runtime.ui_lock);
         return 1;
     }
 
-    printf("========================================\n");
-    printf(" Socket Chat Client\n");
-    printf(" device : %s\n", device_path);
-    printf(" server : %s:%d\n", host, port);
-    printf("========================================\n");
+    ui_print_banner(&runtime, host, port, device_path);
+    ui_print_tagged(&runtime, "info", "\033[1;34m", "socket connected");
+    ui_print_tagged(&runtime, "info", "\033[1;34m", "terminal UI redraws the prompt when new messages arrive");
 
     while (menu_running && runtime.running) {
         char choice[16];
@@ -316,43 +437,42 @@ int main(int argc, char **argv) {
         char password[CHAT_MAX_PASSWORD];
         chat_response_t response;
 
-        printf("\n1) login\n");
-        printf("2) register\n");
-        printf("3) exit\n");
-        prompt_line("select> ", choice, sizeof(choice));
+        ui_print_menu(&runtime);
+        prompt_line(&runtime, "select> ", choice, sizeof(choice));
 
         if (strcmp(choice, "3") == 0) {
             break;
         }
 
         if (strcmp(choice, "1") != 0 && strcmp(choice, "2") != 0) {
-            printf("invalid option\n");
+            ui_print_tagged(&runtime, "error", "\033[1;31m", "invalid option");
             continue;
         }
 
-        prompt_line("username> ", username, sizeof(username));
-        prompt_line("password> ", password, sizeof(password));
+        prompt_line(&runtime, "username> ", username, sizeof(username));
+        prompt_line(&runtime, "password> ", password, sizeof(password));
 
         if (strcmp(choice, "2") == 0) {
             if (submit_auth_request(&runtime, &message_id, REQUEST_AUTH_REGISTER, username, password, &response) != 0) {
-                fprintf(stderr, "register exchange failed\n");
+                ui_print_tagged(&runtime, "error", "\033[1;31m", "register exchange failed");
                 break;
             }
-            printf("register> %s\n", response.payload);
+            ui_print_tagged(&runtime, "info", "\033[1;34m", "register result: %s", response.payload);
             continue;
         }
 
         if (submit_auth_request(&runtime, &message_id, REQUEST_AUTH_LOGIN, username, password, &response) != 0) {
-            fprintf(stderr, "login exchange failed\n");
+            ui_print_tagged(&runtime, "error", "\033[1;31m", "login exchange failed");
             break;
         }
         if (response.status != STATUS_OK) {
-            printf("login> %s\n", response.payload);
+            ui_print_tagged(&runtime, "error", "\033[1;31m", "login failed: %s", response.payload);
             continue;
         }
 
         snprintf(runtime.username, sizeof(runtime.username), "%s", username);
-        printf("auth> login success as %s\n", runtime.username);
+        runtime.current_peer[0] = '\0';
+        ui_print_tagged(&runtime, "info", "\033[1;34m", "login success as %s", runtime.username);
 
         while (runtime.running) {
             char peer_username[CHAT_MAX_USERNAME];
@@ -375,6 +495,7 @@ int main(int argc, char **argv) {
     close(runtime.sockfd);
     pthread_cond_destroy(&runtime.ack_cond);
     pthread_mutex_destroy(&runtime.ack_lock);
-    printf("bye\n");
+    pthread_mutex_destroy(&runtime.ui_lock);
+    ui_print_tagged(&runtime, "info", "\033[1;34m", "bye");
     return 0;
 }
