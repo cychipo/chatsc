@@ -1,0 +1,13 @@
+#ifndef DEVICE_CONTRACT_H
+#define DEVICE_CONTRACT_H
+
+#include "../../app/shared/protocol.h"
+
+#define CHAT_DEVICE_NAME "device"
+#define CHAT_CLASS_NAME  "chat_device"
+#define CHAT_PROC_SUBSTITUTION PROCESS_SUBSTITUTION
+#define CHAT_PROC_SHA1 PROCESS_SHA1
+#define CHAT_PROC_SUBSTITUTION_DECRYPT PROCESS_SUBSTITUTION_DECRYPT
+#define CHAT_IOC_MAGIC 'q'
+
+#endif

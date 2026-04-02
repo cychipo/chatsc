@@ -1,0 +1,12 @@
+node_modules/
+.git/
+Dockerfile*
+.dockerignore
+*.log*
+.env*
+coverage/
+build/
+out/
+*.o
+*.ko
+specs/
