@@ -102,6 +102,15 @@ static ssize_t chat_write(struct file *file, const char __user *buffer, size_t l
     return (ssize_t)sizeof(last_request);
 }
 
+static char *chat_devnode(const struct device *dev, umode_t *mode)
+{
+    (void)dev;
+    if (mode != NULL) {
+        *mode = 0666;
+    }
+    return NULL;
+}
+
 static const struct file_operations chat_fops = {
     .owner = THIS_MODULE,
     .open = chat_open,
@@ -134,6 +143,8 @@ static int __init chat_driver_init(void)
         unregister_chrdev_region(chat_dev, 1);
         return PTR_ERR(chat_class);
     }
+
+    chat_class->devnode = chat_devnode;
 
     chat_device = device_create(chat_class, NULL, chat_dev, NULL, CHAT_DEVICE_NAME);
     if (IS_ERR(chat_device)) {
