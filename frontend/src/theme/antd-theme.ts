@@ -9,16 +9,19 @@ export const antdTheme: ThemeConfig = {
     colorBorderSecondary: glassTheme.colorBorderSecondary,
     borderRadius: glassTheme.borderRadius,
     boxShadowSecondary: glassTheme.boxShadowSecondary,
+    colorText: '#431407',
+    colorTextSecondary: 'rgba(67, 20, 7, 0.76)',
+    colorBgContainer: 'rgba(255, 252, 247, 0.96)',
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   },
   components: {
     Layout: {
       bodyBg: 'transparent',
-      headerBg: 'rgba(255, 247, 237, 0.1)',
-      siderBg: 'rgba(255, 247, 237, 0.1)',
+      headerBg: 'rgba(255, 252, 247, 0.96)',
+      siderBg: 'rgba(255, 252, 247, 0.96)',
     },
     Card: {
-      colorBgContainer: 'rgba(255, 247, 237, 0.1)',
+      colorBgContainer: 'rgba(255, 252, 247, 0.96)',
     },
   },
 }

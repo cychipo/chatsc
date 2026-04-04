@@ -1,4 +1,13 @@
+export type AuthUser = {
+  id: string
+  email: string
+  username: string
+  displayName: string
+  avatarUrl?: string
+}
+
 export type AuthStatus = {
-  feature: 'auth'
-  status: string
+  isAuthenticated: boolean
+  user: AuthUser | null
+  errorMessage?: string | null
 }

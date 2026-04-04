@@ -1,5 +1,5 @@
 import { AuthPage } from '../features/auth'
-import { ChatPage } from '../features/chat'
+import { HomePage } from '../pages/home.page'
 
 export const featureRoutes = [
   {
@@ -7,7 +7,7 @@ export const featureRoutes = [
     element: AuthPage,
   },
   {
-    key: 'chat',
-    element: ChatPage,
+    key: 'home',
+    element: HomePage,
   },
 ]
