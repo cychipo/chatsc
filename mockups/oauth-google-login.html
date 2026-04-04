@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mockup đăng nhập OAuth Desync System</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      :root {
+        --bg-base: #1b130d;
+        --bg-elevated: rgba(217, 119, 6, 0.14);
+        --bg-surface: rgba(255, 247, 237, 0.1);
+        --bg-surface-strong: rgba(255, 247, 237, 0.16);
+        --border-soft: rgba(255, 255, 255, 0.18);
+        --border-strong: rgba(255, 255, 255, 0.28);
+        --text-primary: #fff7ed;
+        --text-secondary: rgba(255, 247, 237, 0.76);
+        --text-muted: rgba(255, 247, 237, 0.58);
+        --primary: #d97706;
+        --secondary: #f59e0b;
+        --cta: #ea580c;
+        --success: #22c55e;
+        --danger: #ef4444;
+        --page-top-glow: rgba(245, 158, 11, 0.24);
+        --page-side-glow: rgba(234, 88, 12, 0.22);
+        --page-gradient-start: #120c08;
+        --page-gradient-mid: #1b130d;
+        --page-gradient-end: #24170d;
+        --glass-strength: 72%;
+        --radius-xl: 28px;
+        --radius-lg: 20px;
+        --radius-md: 16px;
+        --radius-sm: 12px;
+        --shadow-glass:
+          0 20px 60px rgba(0, 0, 0, 0.35),
+          inset 0 0 5px 2px rgba(255, 255, 255, 0.3),
+          inset 0 5px 2px rgba(255, 255, 255, 0.14);
+      }
+
+      body[data-theme='light'] {
+        --bg-base: #fff7ed;
+        --bg-elevated: rgba(234, 88, 12, 0.14);
+        --bg-surface: rgba(255, 252, 247, 0.96);
+        --bg-surface-strong: rgba(255, 248, 240, 0.98);
+        --border-soft: rgba(154, 52, 18, 0.18);
+        --border-strong: rgba(154, 52, 18, 0.28);
+        --text-primary: #431407;
+        --text-secondary: rgba(67, 20, 7, 0.8);
+        --text-muted: rgba(67, 20, 7, 0.62);
+        --primary: #c2410c;
+        --secondary: #ea580c;
+        --cta: #fb923c;
+        --page-top-glow: rgba(251, 146, 60, 0.24);
+        --page-side-glow: rgba(245, 158, 11, 0.2);
+        --page-gradient-start: #fffaf5;
+        --page-gradient-mid: #fff7ed;
+        --page-gradient-end: #ffedd5;
+        --glass-strength: 100%;
+        --shadow-glass:
+          0 18px 38px rgba(194, 65, 12, 0.14),
+          0 0 0 1px rgba(154, 52, 18, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.92);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, var(--page-top-glow), transparent 24%),
+          radial-gradient(circle at top right, var(--page-side-glow), transparent 22%),
+          linear-gradient(180deg, var(--page-gradient-start) 0%, var(--page-gradient-mid) 42%, var(--page-gradient-end) 100%);
+        color: var(--text-primary);
+        transition: background 220ms ease, color 220ms ease;
+      }
+
+      body {
+        padding: 24px;
+      }
+
+      .glass {
+        background: color-mix(in srgb, var(--bg-surface) var(--glass-strength), transparent);
+        backdrop-filter: blur(16px);
+        border: 1px solid var(--border-soft);
+        box-shadow: var(--shadow-glass);
+        transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+      }
+
+      body[data-theme='light'] .topbar,
+      body[data-theme='light'] .hero-panel,
+      body[data-theme='light'] .login-card,
+      body[data-theme='light'] .feature-card,
+      body[data-theme='light'] .sub-card,
+      body[data-theme='light'] .preview-box,
+      body[data-theme='light'] .username-box,
+      body[data-theme='light'] .status-box,
+      body[data-theme='light'] .oauth-provider,
+      body[data-theme='light'] .theme-toggle {
+        border-color: rgba(194, 65, 12, 0.18);
+        box-shadow:
+          0 10px 24px rgba(194, 65, 12, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.86);
+      }
+
+      .page {
+        max-width: 1360px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 22px;
+        border-radius: var(--radius-xl);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .brand-mark {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        color: #fff7ed;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.88), rgba(234, 88, 12, 0.88));
+        box-shadow: 0 0 24px rgba(245, 158, 11, 0.22);
+      }
+
+      .brand-copy h1,
+      .headline h2,
+      .panel-title {
+        margin: 0;
+      }
+
+      .brand-copy p,
+      .lede,
+      .muted,
+      .note,
+      .meta,
+      .rule-list li,
+      .account-row small {
+        color: var(--text-secondary);
+      }
+
+      .brand-copy h1 {
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .brand-copy p {
+        margin: 4px 0 0;
+        font-size: 13px;
+      }
+
+      .nav-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .theme-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 999px;
+      }
+
+      .theme-toggle-icon,
+      .title-with-icon,
+      .btn-content,
+      .oauth-provider,
+      .rule-item-title,
+      .meta-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .theme-toggle button {
+        width: 56px;
+        height: 32px;
+        border: none;
+        border-radius: 999px;
+        position: relative;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: inset 0 0 0 1px var(--border-soft);
+      }
+
+      .theme-toggle button::after {
+        content: '';
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(234, 88, 12, 0.95));
+        transition: transform 180ms ease;
+      }
+
+      body[data-theme='light'] .theme-toggle button::after {
+        transform: translateX(24px);
+      }
+
+      .btn {
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        padding: 12px 18px;
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.04);
+        cursor: pointer;
+        transition: background 180ms ease, border-color 180ms ease;
+      }
+
+      .btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: var(--border-strong);
+      }
+
+      body[data-theme='light'] .btn {
+        background: rgba(255, 250, 245, 0.92);
+      }
+
+      body[data-theme='light'] .btn:not(.btn-primary) {
+        border-color: rgba(194, 65, 12, 0.18);
+        box-shadow: 0 8px 18px rgba(194, 65, 12, 0.06);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, rgba(217, 119, 6, 0.94), rgba(234, 88, 12, 0.94));
+      }
+
+      .btn-google {
+        width: 100%;
+        justify-content: center;
+        padding: 16px 20px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .layout {
+        min-height: calc(100vh - 132px);
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 24px;
+      }
+
+      .hero-panel,
+      .login-panel {
+        border-radius: 32px;
+        overflow: hidden;
+      }
+
+      .hero-panel {
+        padding: 34px;
+        display: grid;
+        gap: 24px;
+        background:
+          radial-gradient(circle at top right, rgba(245, 158, 11, 0.18), transparent 28%),
+          linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+      }
+
+      .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        color: var(--secondary);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        background: rgba(245, 158, 11, 0.08);
+      }
+
+      .headline h2 {
+        font-size: clamp(36px, 5vw, 64px);
+        line-height: 1.02;
+        letter-spacing: -0.04em;
+        margin-bottom: 14px;
+      }
+
+      .lede {
+        max-width: 640px;
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .feature-card,
+      .account-card,
+      .login-card,
+      .sub-card {
+        border-radius: var(--radius-lg);
+        padding: 18px;
+        background: var(--bg-surface-strong);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .feature-card strong,
+      .account-card strong,
+      .panel-title,
+      .sub-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+
+      .login-panel {
+        display: grid;
+        align-content: center;
+      }
+
+      .login-card {
+        padding: 30px;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+
+      .section-head .title-with-icon {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .oauth-provider {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .identity-preview {
+        display: grid;
+        gap: 14px;
+        margin: 24px 0;
+      }
+
+      .preview-box,
+      .username-box,
+      .status-box {
+        border-radius: 18px;
+        padding: 16px;
+        background: var(--bg-surface-strong);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .account-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .account-badge {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.9), rgba(234, 88, 12, 0.9));
+        color: #fff7ed;
+        flex-shrink: 0;
+      }
+
+      .username-box code,
+      .status-pill,
+      .tiny-note {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+      }
+
+      .username-box code {
+        color: var(--secondary);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .status-pill {
+        color: #86efac;
+        border: 1px solid rgba(34, 197, 94, 0.22);
+        background: rgba(34, 197, 94, 0.08);
+      }
+
+      .tiny-note {
+        color: var(--text-muted);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .helper-text {
+        margin: 18px 0 0;
+        font-size: 13px;
+        line-height: 1.65;
+        color: var(--text-secondary);
+      }
+
+      .rule-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 12px;
+      }
+
+      .rule-list li {
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .meta-row {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .footer-note {
+        padding: 18px 22px;
+        border-radius: var(--radius-xl);
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      .icon,
+      .brand-mark svg,
+      .theme-toggle svg,
+      .btn svg,
+      .account-badge svg,
+      .oauth-provider svg {
+        width: 18px;
+        height: 18px;
+        stroke-width: 2;
+      }
+
+      .theme-toggle svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      @media (max-width: 1080px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .feature-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding: 16px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .nav-actions {
+          flex-wrap: wrap;
+        }
+
+        .hero-panel,
+        .login-card {
+          padding: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body data-theme="light">
+    <div class="page">
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="brand-mark"><i data-lucide="sparkles"></i></div>
+          <div class="brand-copy">
+            <h1>Desync System</h1>
+            <p>Điểm vào Google OAuth cho gateway chat thời gian thực.</p>
+          </div>
+        </div>
+        <div class="nav-actions">
+          <div class="theme-toggle glass">
+            <span class="theme-toggle-icon"><i data-lucide="moon-star"></i></span>
+            <span id="themeLabel">Sáng</span>
+            <button id="themeToggle" type="button" aria-label="Toggle dark and light mode" aria-pressed="false"></button>
+            <span class="theme-toggle-icon"><i data-lucide="sun-medium"></i></span>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="hero-panel glass">
+          <span class="kicker"><i data-lucide="shield-check"></i>Chỉ dùng Google OAuth</span>
+
+          <div class="headline">
+            <h2>Đăng nhập bằng Google để vào không gian Desync.</h2>
+            <p class="lede">
+              Màn hình này bám theo cùng hệ glassstyle màu cam của design system và chỉ tập trung vào một hành động rõ ràng:
+              xác thực bằng Google, suy ra tên người dùng từ phần đầu email, rồi đi vào chat gateway.
+            </p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card glass">
+              <strong class="title-with-icon"><i class="icon" data-lucide="badge-check"></i>Một luồng xác thực</strong>
+              <div class="meta">Chỉ hiển thị một hành động duy nhất: tiếp tục với Google.</div>
+            </article>
+            <article class="feature-card glass">
+              <strong class="title-with-icon"><i class="icon" data-lucide="at-sign"></i>Quy tắc tên người dùng</strong>
+              <div class="meta">Tên người dùng được lấy từ phần trước ký tự @ của email Google.</div>
+            </article>
+            <article class="feature-card glass">
+              <strong class="title-with-icon"><i class="icon" data-lucide="messages-square"></i>Truy cập gateway</strong>
+              <div class="meta">Đăng nhập thành công sẽ đưa người dùng vào không gian chat ngay lập tức.</div>
+            </article>
+          </div>
+
+          <article class="sub-card glass">
+            <strong class="title-with-icon"><i class="icon" data-lucide="list-checks"></i>Quy tắc màn đăng nhập</strong>
+            <ul class="rule-list">
+              <li><span class="rule-item-title"><i class="icon" data-lucide="ban"></i>Không có ô mật khẩu</span><br />Màn hình không được hiển thị xác thực cục bộ bằng username/password.</li>
+              <li><span class="rule-item-title"><i class="icon" data-lucide="badge-check"></i>Google là hành động chính duy nhất</span><br />Nút Google là CTA có mức nhấn mạnh cao duy nhất trên màn hình.</li>
+              <li><span class="rule-item-title"><i class="icon" data-lucide="shapes"></i>Chỉ dùng icon Lucide</span><br />Toàn bộ icon thị giác đều theo bộ Lucide để giữ sự nhất quán.</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="login-panel">
+          <article class="login-card glass">
+            <div class="section-head">
+              <div>
+                <div class="title-with-icon panel-title"><i class="icon" data-lucide="log-in"></i>Đăng nhập OAuth</div>
+                <p class="muted" style="margin: 8px 0 0;">Thẻ truy cập tối giản, bám theo design system.</p>
+              </div>
+              <div class="oauth-provider"><i data-lucide="shield"></i>Nhà cung cấp Google</div>
+            </div>
+
+            <button class="btn btn-primary btn-google">
+              <span class="btn-content"><i data-lucide="badge-check"></i>Tiếp tục với Google</span>
+            </button>
+
+            <div class="identity-preview">
+              <div class="preview-box glass">
+                <div class="account-row">
+                  <div class="meta-row">
+                    <div class="account-badge"><i data-lucide="user-round"></i></div>
+                    <div>
+                      <strong style="display:block;margin-bottom:4px;">Xem trước danh tính</strong>
+                      <small>abc.123@gmail.com</small>
+                    </div>
+                  </div>
+                  <span class="status-pill"><i data-lucide="circle-check-big"></i>Đã xác minh</span>
+                </div>
+              </div>
+
+              <div class="username-box glass">
+                <strong>Tên người dùng suy ra</strong>
+                <p class="helper-text" style="margin-top: 8px;">Tên người dùng được tạo từ phần đứng trước <code>@</code> trong email Google.</p>
+                <code><i data-lucide="at-sign"></i> abc.123</code>
+              </div>
+
+              <div class="status-box glass">
+                <strong class="title-with-icon"><i class="icon" data-lucide="waypoints"></i>Sau khi thành công</strong>
+                <p class="helper-text">Phiên xác thực được tạo, gateway được chuẩn bị và người dùng đi vào giao diện chat thời gian thực.</p>
+                <span class="tiny-note"><i data-lucide="arrow-right-left"></i> OAuth callback → session → gateway</span>
+              </div>
+            </div>
+
+            <p class="helper-text">
+              Nếu người dùng huỷ đăng nhập Google, trang sẽ giữ nguyên ở màn hình này và hiển thị trạng thái lỗi nội tuyến thay vì tạo bất kỳ phiên chat nào.
+            </p>
+          </article>
+        </section>
+      </main>
+
+      <footer class="footer-note glass">
+        Mục đích mockup: màn hình đăng nhập Google OAuth chuyên biệt, bám theo ngôn ngữ thị giác đã định nghĩa trong <code>mockups/design-system.html</code>.
+      </footer>
+    </div>
+
+    <script>
+      const body = document.body;
+      const toggleButton = document.getElementById('themeToggle');
+      const themeLabel = document.getElementById('themeLabel');
+
+      const applyTheme = (theme) => {
+        body.setAttribute('data-theme', theme);
+        const isLight = theme === 'light';
+        toggleButton.setAttribute('aria-pressed', String(isLight));
+        themeLabel.textContent = isLight ? 'Sáng' : 'Tối';
+      };
+
+      toggleButton.addEventListener('click', () => {
+        const nextTheme = body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        applyTheme(nextTheme);
+      });
+
+      applyTheme(body.getAttribute('data-theme') || 'dark');
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    </script>
+  </body>
+</html>

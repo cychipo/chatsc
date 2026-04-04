@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mockup giao diện chat Desync</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      :root {
+        --bg-base: #1b130d;
+        --bg-elevated: rgba(217, 119, 6, 0.14);
+        --bg-surface: rgba(255, 247, 237, 0.12);
+        --bg-surface-strong: rgba(255, 250, 244, 0.14);
+        --bg-surface-soft: rgba(255, 255, 255, 0.05);
+        --border-soft: rgba(255, 255, 255, 0.14);
+        --border-strong: rgba(255, 255, 255, 0.24);
+        --text-primary: #fff7ed;
+        --text-secondary: rgba(255, 247, 237, 0.8);
+        --text-muted: rgba(255, 247, 237, 0.58);
+        --primary: #d97706;
+        --secondary: #f59e0b;
+        --cta: #ea580c;
+        --success: #22c55e;
+        --danger: #ef4444;
+        --page-top-glow: rgba(245, 158, 11, 0.24);
+        --page-side-glow: rgba(234, 88, 12, 0.22);
+        --page-gradient-start: #120c08;
+        --page-gradient-mid: #1b130d;
+        --page-gradient-end: #24170d;
+        --glass-strength: 72%;
+        --radius-xl: 28px;
+        --radius-lg: 22px;
+        --radius-md: 18px;
+        --radius-sm: 14px;
+        --shadow-glass:
+          0 20px 60px rgba(0, 0, 0, 0.34),
+          inset 0 0 5px 2px rgba(255, 255, 255, 0.24),
+          inset 0 5px 2px rgba(255, 255, 255, 0.12);
+      }
+
+      body[data-theme='light'] {
+        --bg-base: #fff7ed;
+        --bg-elevated: rgba(234, 88, 12, 0.12);
+        --bg-surface: rgba(255, 252, 247, 0.96);
+        --bg-surface-strong: rgba(255, 248, 240, 0.98);
+        --bg-surface-soft: rgba(255, 250, 245, 0.9);
+        --border-soft: rgba(154, 52, 18, 0.14);
+        --border-strong: rgba(154, 52, 18, 0.22);
+        --text-primary: #431407;
+        --text-secondary: rgba(67, 20, 7, 0.82);
+        --text-muted: rgba(67, 20, 7, 0.62);
+        --primary: #c2410c;
+        --secondary: #ea580c;
+        --cta: #fb923c;
+        --page-top-glow: rgba(251, 146, 60, 0.24);
+        --page-side-glow: rgba(245, 158, 11, 0.18);
+        --page-gradient-start: #fffaf5;
+        --page-gradient-mid: #fff7ed;
+        --page-gradient-end: #ffedd5;
+        --glass-strength: 100%;
+        --shadow-glass:
+          0 18px 38px rgba(194, 65, 12, 0.14),
+          0 0 0 1px rgba(154, 52, 18, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 0.92);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background:
+          radial-gradient(circle at top left, var(--page-top-glow), transparent 24%),
+          radial-gradient(circle at top right, var(--page-side-glow), transparent 20%),
+          linear-gradient(180deg, var(--page-gradient-start) 0%, var(--page-gradient-mid) 42%, var(--page-gradient-end) 100%);
+        color: var(--text-primary);
+        transition: background 220ms ease, color 220ms ease;
+      }
+
+      body {
+        padding: 24px;
+      }
+
+      button,
+      .conversation-item,
+      .theme-toggle button,
+      .icon-btn,
+      .tag {
+        cursor: pointer;
+      }
+
+      .glass {
+        background: color-mix(in srgb, var(--bg-surface) var(--glass-strength), transparent);
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--border-soft);
+        box-shadow: var(--shadow-glass);
+        transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease, transform 180ms ease;
+      }
+
+      .page {
+        max-width: 1480px;
+        margin: 0 auto;
+        display: grid;
+        gap: 22px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 22px;
+        border-radius: var(--radius-xl);
+      }
+
+      .brand,
+      .nav-actions,
+      .theme-toggle,
+      .btn-content,
+      .header-chip,
+      .mini-row,
+      .timeline-meta,
+      .conversation-meta,
+      .composer-tools,
+      .composer-actions,
+      .member-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand {
+        gap: 14px;
+      }
+
+      .brand-mark,
+      .avatar,
+      .avatar-mini {
+        display: grid;
+        place-items: center;
+        color: #fff7ed;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.94), rgba(234, 88, 12, 0.92));
+      }
+
+      .brand-mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        box-shadow: 0 0 24px rgba(245, 158, 11, 0.2);
+      }
+
+      .brand-copy h1,
+      .brand-copy p,
+      .section-title,
+      .section-subtitle,
+      .conversation-name,
+      .conversation-preview,
+      .message-bubble p,
+      .info-card p,
+      .timeline-card p,
+      .empty-state p,
+      .empty-state strong {
+        margin: 0;
+      }
+
+      .brand-copy h1 {
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .brand-copy p,
+      .section-subtitle,
+      .conversation-preview,
+      .conversation-meta,
+      .message-time,
+      .message-status,
+      .muted,
+      .member-role,
+      .info-card p,
+      .timeline-card p,
+      .search-box,
+      .composer-hint,
+      .empty-state p {
+        color: var(--text-secondary);
+      }
+
+      .theme-toggle {
+        padding: 8px 10px;
+        border-radius: 999px;
+      }
+
+      .theme-toggle button {
+        width: 56px;
+        height: 32px;
+        border: none;
+        border-radius: 999px;
+        position: relative;
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: inset 0 0 0 1px var(--border-soft);
+      }
+
+      .theme-toggle button::after {
+        content: '';
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(234, 88, 12, 0.95));
+        transition: transform 180ms ease;
+      }
+
+      body[data-theme='dark'] .theme-toggle button::after {
+        transform: translateX(24px);
+      }
+
+      .btn,
+      .icon-btn {
+        border: 1px solid var(--border-soft);
+        color: var(--text-primary);
+        background: var(--bg-surface-soft);
+        transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+      }
+
+      .btn {
+        border-radius: 999px;
+        padding: 12px 18px;
+      }
+
+      .icon-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        display: inline-grid;
+        place-items: center;
+      }
+
+      .btn:hover,
+      .icon-btn:hover,
+      .conversation-item:hover,
+      .tag:hover {
+        border-color: var(--border-strong);
+        background: rgba(255, 255, 255, 0.12);
+        transform: translateY(-1px);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, rgba(217, 119, 6, 0.94), rgba(234, 88, 12, 0.94));
+        color: #fff7ed;
+      }
+
+      .workspace {
+        min-height: calc(100vh - 132px);
+        display: grid;
+        grid-template-columns: 340px minmax(0, 1fr) 340px;
+        gap: 20px;
+        padding: 20px;
+        border-radius: 34px;
+      }
+
+      .sidebar,
+      .chat-main,
+      .info-panel {
+        border-radius: 28px;
+        padding: 18px;
+      }
+
+      .sidebar,
+      .info-panel,
+      .chat-main {
+        display: grid;
+        gap: 16px;
+        align-content: start;
+      }
+
+      .sidebar-head,
+      .panel-head,
+      .chat-header,
+      .composer-row,
+      .conversation-head,
+      .timeline-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .section-title {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .search-box {
+        min-height: 48px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--border-soft);
+        background: var(--bg-surface-strong);
+        display: flex;
+        align-items: center;
+      }
+
+      .conversation-list,
+      .info-stack,
+      .timeline-list,
+      .member-list,
+      .message-stream {
+        display: grid;
+        gap: 12px;
+      }
+
+      .conversation-item,
+      .chat-header,
+      .composer,
+      .info-card,
+      .timeline-card,
+      .member-item,
+      .empty-state {
+        padding: 16px;
+        border-radius: 22px;
+        background: var(--bg-surface-strong);
+        border: 1px solid var(--border-soft);
+      }
+
+      .conversation-item.active {
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(234, 88, 12, 0.1));
+        border-color: rgba(234, 88, 12, 0.3);
+      }
+
+      .conversation-item {
+        display: grid;
+        gap: 12px;
+      }
+
+      .conversation-head {
+        align-items: flex-start;
+      }
+
+      .conversation-main {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .conversation-name-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+
+      .conversation-name {
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .conversation-preview {
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .conversation-meta {
+        justify-content: space-between;
+        font-size: 12px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: rgba(234, 88, 12, 0.14);
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+      }
+
+      .avatar-grid {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+        gap: 3px;
+        padding: 3px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(234, 88, 12, 0.22));
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        flex: 0 0 auto;
+      }
+
+      body[data-theme='light'] .avatar-grid {
+        border-color: rgba(154, 52, 18, 0.12);
+      }
+
+      .avatar-mini {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        font-size: 9px;
+        font-weight: 700;
+        overflow: hidden;
+      }
+
+      .avatar-mini svg,
+      .avatar svg,
+      .brand-mark svg,
+      .icon-btn svg,
+      .theme-toggle svg,
+      .header-chip svg,
+      .tag svg {
+        width: 18px;
+        height: 18px;
+        stroke-width: 2;
+      }
+
+      .avatar-mini svg {
+        width: 10px;
+        height: 10px;
+      }
+
+      .chat-main {
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+      }
+
+      .chat-header {
+        align-items: flex-start;
+      }
+
+      .header-left {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+      }
+
+      .header-chip,
+      .tag {
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid var(--border-soft);
+        background: var(--bg-surface-soft);
+      }
+
+      .message-stream {
+        align-content: start;
+        overflow: auto;
+        padding-right: 6px;
+      }
+
+      .message-bubble,
+      .event-bubble {
+        max-width: 82%;
+        padding: 16px 18px;
+        border-radius: 24px;
+        border: 1px solid var(--border-soft);
+      }
+
+      .message-bubble {
+        background: var(--bg-surface-strong);
+      }
+
+      .message-bubble.outgoing {
+        margin-left: auto;
+        background: linear-gradient(135deg, rgba(217, 119, 6, 0.18), rgba(234, 88, 12, 0.12));
+        border-color: rgba(234, 88, 12, 0.24);
+      }
+
+      .event-bubble {
+        margin: 4px auto;
+        max-width: 68%;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      body[data-theme='light'] .event-bubble {
+        background: rgba(251, 146, 60, 0.08);
+      }
+
+      .message-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 10px;
+        font-size: 13px;
+      }
+
+      .message-author {
+        font-weight: 700;
+      }
+
+      .message-bubble p {
+        line-height: 1.55;
+      }
+
+      .composer {
+        display: grid;
+        gap: 12px;
+      }
+
+      .composer-tools {
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .composer-input {
+        min-height: 98px;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--border-soft);
+        background: var(--bg-surface-soft);
+        color: var(--text-primary);
+        font: inherit;
+        resize: none;
+        outline: none;
+      }
+
+      .composer-input:focus,
+      .theme-toggle button:focus-visible,
+      .btn:focus-visible,
+      .icon-btn:focus-visible,
+      .conversation-item:focus-visible,
+      .tag:focus-visible {
+        outline: 2px solid rgba(234, 88, 12, 0.55);
+        outline-offset: 2px;
+      }
+
+      .composer-row {
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+
+      .composer-hint {
+        font-size: 12px;
+      }
+
+      .composer-actions {
+        margin-left: auto;
+      }
+
+      .timeline-card,
+      .member-item {
+        display: grid;
+        gap: 10px;
+      }
+
+      .timeline-head {
+        align-items: center;
+      }
+
+      .timeline-marker {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        color: #fff7ed;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.94), rgba(234, 88, 12, 0.92));
+      }
+
+      .timeline-meta {
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .member-item {
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 22px 18px;
+      }
+
+      .footer-note {
+        padding: 18px 22px;
+        border-radius: var(--radius-xl);
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      @media (max-width: 1240px) {
+        .workspace {
+          grid-template-columns: 300px minmax(0, 1fr);
+        }
+
+        .info-panel {
+          grid-column: 1 / -1;
+        }
+      }
+
+      @media (max-width: 860px) {
+        body {
+          padding: 16px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .nav-actions {
+          flex-wrap: wrap;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+          padding: 14px;
+        }
+
+        .message-bubble,
+        .event-bubble {
+          max-width: 100%;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body data-theme="light">
+    <div class="page">
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="brand-mark"><i data-lucide="messages-square"></i></div>
+          <div class="brand-copy">
+            <h1>Giao diện chat Desync</h1>
+            <p>Chat 1-1, chat nhóm, lịch sử thành viên và relay binary theo spec hiện tại.</p>
+          </div>
+        </div>
+
+        <div class="nav-actions">
+          <div class="theme-toggle glass">
+            <span><i data-lucide="sun-medium"></i></span>
+            <span id="themeLabel">Sáng</span>
+            <button id="themeToggle" type="button" aria-label="Chuyển đổi chế độ sáng tối" aria-pressed="true"></button>
+            <span><i data-lucide="moon-star"></i></span>
+          </div>
+          <button class="btn"><span class="btn-content"><i data-lucide="panel-left-close"></i>Thu gọn</span></button>
+          <button class="btn btn-primary"><span class="btn-content"><i data-lucide="square-pen"></i>Cuộc trò chuyện mới</span></button>
+        </div>
+      </header>
+
+      <main class="workspace glass">
+        <aside class="sidebar glass">
+          <div class="sidebar-head">
+            <div>
+              <h2 class="section-title">Danh sách trò chuyện</h2>
+              <p class="section-subtitle">Avatar 1-1 và cụm avatar 2x2 cho nhóm gần nhất.</p>
+            </div>
+            <button class="icon-btn" aria-label="Lọc cuộc trò chuyện">
+              <i data-lucide="sliders-horizontal"></i>
+            </button>
+          </div>
+
+          <div class="search-box"><i data-lucide="search"></i>Tìm theo tên người dùng, nhóm hoặc tin nhắn...</div>
+
+          <div class="conversation-list">
+            <article class="conversation-item active" tabindex="0">
+              <div class="conversation-head">
+                <div class="avatar"><i data-lucide="user-round"></i></div>
+                <div class="conversation-main">
+                  <div class="conversation-name-row">
+                    <strong class="conversation-name">ops.monitor</strong>
+                    <span class="badge">2</span>
+                  </div>
+                  <p class="conversation-preview">Đã xác nhận relay binary từ frontend sang backend và đổi lại thành text thành công.</p>
+                </div>
+              </div>
+              <div class="conversation-meta">
+                <span>1-1 · Vừa xong</span>
+                <span>Online</span>
+              </div>
+            </article>
+
+            <article class="conversation-item" tabindex="0">
+              <div class="conversation-head">
+                <div class="avatar-grid" aria-label="Nhóm kernel.bridge gồm 4 thành viên gần nhất">
+                  <div class="avatar-mini">AB</div>
+                  <div class="avatar-mini">LM</div>
+                  <div class="avatar-mini">QN</div>
+                  <div class="avatar-mini"><i data-lucide="shield"></i></div>
+                </div>
+                <div class="conversation-main">
+                  <div class="conversation-name-row">
+                    <strong class="conversation-name">kernel.bridge</strong>
+                    <span class="badge">4</span>
+                  </div>
+                  <p class="conversation-preview">Linh đã được Minh thêm vào nhóm lúc 09:18. Quang vừa phản hồi trạng thái bridge.</p>
+                </div>
+              </div>
+              <div class="conversation-meta">
+                <span>Nhóm · 4 thành viên</span>
+                <span>09:18</span>
+              </div>
+            </article>
+
+            <article class="conversation-item" tabindex="0">
+              <div class="conversation-head">
+                <div class="avatar-grid" aria-label="Nhóm release.watch gồm 4 thành viên gần nhất">
+                  <div class="avatar-mini">TH</div>
+                  <div class="avatar-mini">NT</div>
+                  <div class="avatar-mini"><i data-lucide="cpu"></i></div>
+                  <div class="avatar-mini">VV</div>
+                </div>
+                <div class="conversation-main">
+                  <div class="conversation-name-row">
+                    <strong class="conversation-name">release.watch</strong>
+                    <span class="badge">1</span>
+                  </div>
+                  <p class="conversation-preview">Tú đã rời nhóm. Hệ thống chặn gửi tin mới từ thành viên không còn hiệu lực.</p>
+                </div>
+              </div>
+              <div class="conversation-meta">
+                <span>Nhóm · Lịch sử thành viên</span>
+                <span>08:54</span>
+              </div>
+            </article>
+
+            <article class="conversation-item" tabindex="0">
+              <div class="conversation-head">
+                <div class="avatar"><i data-lucide="user-round"></i></div>
+                <div class="conversation-main">
+                  <div class="conversation-name-row">
+                    <strong class="conversation-name">system.gateway</strong>
+                    <span class="badge">0</span>
+                  </div>
+                  <p class="conversation-preview">Luồng backend ↔ Linux kernel vẫn ổn định. Không có lỗi giải mã mới.</p>
+                </div>
+              </div>
+              <div class="conversation-meta">
+                <span>1-1 · Hệ thống</span>
+                <span>08:30</span>
+              </div>
+            </article>
+          </div>
+        </aside>
+
+        <section class="chat-main glass">
+          <header class="chat-header glass">
+            <div class="header-left">
+              <div class="avatar-grid" aria-label="Nhóm kernel.bridge gồm 4 thành viên gần nhất">
+                <div class="avatar-mini">AB</div>
+                <div class="avatar-mini">LM</div>
+                <div class="avatar-mini">QN</div>
+                <div class="avatar-mini"><i data-lucide="shield"></i></div>
+              </div>
+              <div>
+                <h2 class="section-title">kernel.bridge</h2>
+                <p class="section-subtitle">Nhóm giám sát relay chat, membership events và luồng kết nối tới nhân Linux.</p>
+              </div>
+            </div>
+            <div class="mini-row">
+              <span class="header-chip"><i data-lucide="binary"></i>FE gửi binary</span>
+              <span class="header-chip"><i data-lucide="languages"></i>BE đổi lại text</span>
+              <span class="header-chip"><i data-lucide="shield-check"></i>4 thành viên hoạt động</span>
+            </div>
+          </header>
+
+          <div class="message-stream">
+            <div class="event-bubble">Minh đã thêm Linh vào nhóm lúc 09:18.</div>
+
+            <article class="message-bubble">
+              <div class="message-meta">
+                <strong class="message-author">kernel.bridge</strong>
+                <span class="message-time">09:19</span>
+              </div>
+              <p>Binary payload từ frontend đã được backend giải mã thành văn bản trước khi chuyển vào luồng chat hiện tại.</p>
+            </article>
+
+            <article class="message-bubble outgoing">
+              <div class="message-meta">
+                <strong class="message-author">abc.123</strong>
+                <span class="message-time">09:20</span>
+              </div>
+              <p>Mình muốn giao diện nhóm nhìn rõ lịch sử ai vào nhóm, ai thêm ai và giữ cảm giác giống ứng dụng chat phổ biến.</p>
+            </article>
+
+            <article class="message-bubble">
+              <div class="message-meta">
+                <strong class="message-author">linh.ops</strong>
+                <span class="message-time">09:21</span>
+              </div>
+              <p>Mình vừa được thêm vào nhóm. Sidebar avatar grid nhìn ổn hơn vì thấy ngay đây là chat nhóm thay vì chat 1-1.</p>
+            </article>
+
+            <div class="event-bubble">Tú đã rời nhóm release.watch lúc 08:54. Tài khoản đó không thể gửi thêm tin nhắn mới.</div>
+
+            <article class="message-bubble outgoing">
+              <div class="message-meta">
+                <strong class="message-author">abc.123</strong>
+                <span class="message-time">09:22</span>
+              </div>
+              <p>Giữ light mode rõ kính hơn, avatar trái đẹp hơn và panel phải tập trung vào timeline thành viên nhé.</p>
+            </article>
+          </div>
+
+          <div class="composer glass">
+            <div class="composer-tools">
+              <div class="mini-row">
+                <span class="tag"><i data-lucide="history"></i>Lưu thứ tự hội thoại</span>
+                <span class="tag"><i data-lucide="users"></i>Hiển thị membership events</span>
+              </div>
+              <span class="composer-hint">Tin nhắn gửi từ FE sẽ đi dạng binary trước khi backend đổi lại thành text.</span>
+            </div>
+
+            <textarea class="composer-input" aria-label="Nhập tin nhắn">Nhập tin nhắn, thông báo tham gia nhóm hoặc trạng thái relay tại đây...</textarea>
+
+            <div class="composer-row">
+              <div class="mini-row">
+                <button class="icon-btn" aria-label="Đính kèm tệp"><i data-lucide="paperclip"></i></button>
+                <button class="icon-btn" aria-label="Chèn biểu cảm"><i data-lucide="smile"></i></button>
+                <button class="icon-btn" aria-label="Thêm thành viên"><i data-lucide="user-plus"></i></button>
+              </div>
+              <div class="composer-actions">
+                <button class="btn"><span class="btn-content"><i data-lucide="log-out"></i>Rời nhóm</span></button>
+                <button class="btn btn-primary"><span class="btn-content"><i data-lucide="send-horizontal"></i>Gửi tin</span></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="info-panel glass">
+          <div class="panel-head">
+            <div>
+              <h2 class="section-title">Thông tin cuộc trò chuyện</h2>
+              <p class="section-subtitle">Tập trung vào thành viên đang hoạt động và lịch sử vào nhóm.</p>
+            </div>
+            <button class="icon-btn" aria-label="Mở thêm tùy chọn nhóm"><i data-lucide="ellipsis"></i></button>
+          </div>
+
+          <div class="info-stack">
+            <article class="info-card glass">
+              <strong>Trạng thái chat hiện tại</strong>
+              <p>Nhóm đang hoạt động ổn định, relay tới backend và nhân Linux vẫn thông suốt, chưa có lỗi giải mã mới.</p>
+            </article>
+
+            <article class="info-card glass">
+              <strong>Quy tắc giao diện</strong>
+              <p>Chat 1-1 dùng một avatar lớn. Chat nhóm dùng cụm 3-4 avatar gần nhất theo grid 2x2 để nhận diện nhanh ngay từ sidebar.</p>
+            </article>
+
+            <article class="timeline-card glass">
+              <div class="timeline-head">
+                <div class="timeline-marker"><i data-lucide="clock-3"></i></div>
+                <div>
+                  <strong>Dòng thời gian thành viên</strong>
+                  <p class="muted">Theo đúng spec chat nhóm</p>
+                </div>
+              </div>
+              <div class="timeline-list">
+                <div>
+                  <div class="timeline-meta"><span>Linh tham gia</span><span>09:18</span></div>
+                  <p>Được Minh thêm vào nhóm kernel.bridge.</p>
+                </div>
+                <div>
+                  <div class="timeline-meta"><span>Quang tham gia</span><span>Hôm qua</span></div>
+                  <p>Được abc.123 thêm để theo dõi trạng thái bridge.</p>
+                </div>
+                <div>
+                  <div class="timeline-meta"><span>Tú rời nhóm</span><span>08:54</span></div>
+                  <p>Hệ thống ghi nhận rời nhóm và chặn gửi tin mới sau thời điểm đó.</p>
+                </div>
+              </div>
+            </article>
+
+            <article class="info-card glass">
+              <strong>Thành viên đang hoạt động</strong>
+              <div class="member-list">
+                <div class="member-item glass">
+                  <div class="avatar"><i data-lucide="user-round"></i></div>
+                  <div>
+                    <strong>abc.123</strong>
+                    <div class="member-role">Người dùng web</div>
+                  </div>
+                  <div class="member-meta"><span class="status-dot"></span><span class="muted">Online</span></div>
+                </div>
+                <div class="member-item glass">
+                  <div class="avatar"><i data-lucide="shield"></i></div>
+                  <div>
+                    <strong>ops.monitor</strong>
+                    <div class="member-role">Giám sát hệ thống</div>
+                  </div>
+                  <div class="member-meta"><span class="status-dot"></span><span class="muted">Đang phản hồi</span></div>
+                </div>
+                <div class="member-item glass">
+                  <div class="avatar"><i data-lucide="cpu"></i></div>
+                  <div>
+                    <strong>kernel.guard</strong>
+                    <div class="member-role">Bridge watcher</div>
+                  </div>
+                  <div class="member-meta"><span class="status-dot"></span><span class="muted">Hoạt động</span></div>
+                </div>
+              </div>
+            </article>
+
+            <div class="empty-state glass">
+              <strong>Tính năng sẽ đi tiếp</strong>
+              <p>Mockup này đã phản ánh chat 1-1, chat nhóm, avatar nhóm 2x2, membership events và hành vi rời/xóa thành viên theo spec.</p>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer-note glass">
+        Mockup đã được chỉnh theo <code>specs/003-chat-groups/spec.md</code> và bám phong cách của <code>mockups/design-system.html</code>.
+      </footer>
+    </div>
+
+    <script>
+      const body = document.body;
+      const toggleButton = document.getElementById('themeToggle');
+      const themeLabel = document.getElementById('themeLabel');
+
+      const applyTheme = (theme) => {
+        body.setAttribute('data-theme', theme);
+        const isLight = theme === 'light';
+        toggleButton.setAttribute('aria-pressed', String(isLight));
+        themeLabel.textContent = isLight ? 'Sáng' : 'Tối';
+      };
+
+      toggleButton.addEventListener('click', () => {
+        const nextTheme = body.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        applyTheme(nextTheme);
+      });
+
+      applyTheme(body.getAttribute('data-theme') || 'light');
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    </script>
+  </body>
+</html>
