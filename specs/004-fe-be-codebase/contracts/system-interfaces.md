@@ -54,7 +54,9 @@
 
 ## 7. Testing Contract
 - Backend MUST có lối chạy kiểm tra riêng cho unit/integration phù hợp với NestJS.
+- Backend test entry mặc định được đặt trong `backend/test/jest-e2e.json` và `backend/test/app.e2e-spec.ts`.
 - Frontend MUST có lối chạy kiểm tra riêng cho unit/component phù hợp với React/Vite.
+- Frontend test entry mặc định được đặt trong `frontend/vitest.config.ts` và `frontend/src/test/setup.ts`.
 - Developer MUST xác định được nơi đặt test của từng app mà không cần knowledge truyền miệng.
 
 ## 8. Extensibility Contract

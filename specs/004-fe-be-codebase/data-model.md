@@ -108,6 +108,7 @@
 4. Test được chạy ở app liên quan trước khi tích hợp.
 
 ### Future Auth/Chat Readiness
-1. Backend thêm `modules/auth` hoặc `modules/chat`.
-2. Frontend thêm `features/auth` hoặc `features/chat`.
-3. Giao tiếp giữa hai phía đi qua contract HTTP đã định vị sẵn.
+1. Backend thêm `modules/auth` hoặc `modules/chat` với module/controller placeholders đã có sẵn.
+2. Frontend thêm `features/auth` hoặc `features/chat` với entry pages và index exports tương ứng.
+3. Giao tiếp giữa hai phía đi qua contract HTTP đã định vị sẵn trong `frontend/src/services/`.
+4. Kiểu dữ liệu feature-facing được đặt trong `frontend/src/types/auth.ts` và `frontend/src/types/chat.ts`.

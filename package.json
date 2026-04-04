@@ -1,0 +1,17 @@
+{
+  "name": "chatsc-workspace",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "yarn workspace backend dev",
+    "dev:frontend": "yarn workspace frontend dev",
+    "build:backend": "yarn workspace backend build",
+    "build:frontend": "yarn workspace frontend build",
+    "test:backend": "yarn workspace backend test",
+    "test:frontend": "yarn workspace frontend test"
+  }
+}
