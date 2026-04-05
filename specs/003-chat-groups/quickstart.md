@@ -48,6 +48,29 @@ yarn dev
 2. Verify backend trả lỗi nghiệp vụ.
 3. Verify frontend hiển thị trạng thái gửi thất bại rõ ràng.
 
-## 5. Suggested tests
-- Backend e2e (Jest): auth + chat contracts + membership events.
-- Frontend tests (Vitest): render layout, optimistic UI, error state khi decode fail.
+## 5. Implementation validation notes
+
+### Backend tests passed
+- `chat-direct-message.e2e-spec.ts`: tạo conversation, gửi/nhận message, validate membership.
+- `chat-binary-decode.e2e-spec.ts`: decode UTF-8, reject invalid payload, reject empty/whitespace.
+- `chat-history-pagination.e2e-spec.ts`: mặc định 10 tin, cursor pagination, cap limit 50.
+- `chat-group-membership-events.e2e-spec.ts`: tạo group, add member, timeline events.
+- `chat-group-leave.e2e-spec.ts`: leave group, tạo left event.
+- `chat-group-remove-member.e2e-spec.ts`: owner/admin remove, reject từ member thường.
+- `chat-group-forbidden-send.e2e-spec.ts`: reject gửi khi không còn active.
+
+### Frontend tests available
+- `chat-direct-thread.test.tsx`: render conversation list, thread, composer.
+- `chat-group-timeline.test.tsx`: membership events loading.
+- `chat-layout.test.tsx`: 3 vùng layout.
+- `chat-bubble-variant.test.tsx`: mine/theirs bubble styling.
+
+### API endpoints implemented
+- `GET /chat/conversations` - list conversations
+- `POST /chat/conversations` - create direct/group
+- `GET /chat/conversations/:id/messages` - paginated messages
+- `POST /chat/conversations/:id/messages` - send binary message
+- `POST /chat/conversations/:id/members` - add member
+- `DELETE /chat/conversations/:id/members/:userId` - remove member
+- `POST /chat/conversations/:id/leave` - leave conversation
+- `GET /chat/conversations/:id/events` - membership timeline

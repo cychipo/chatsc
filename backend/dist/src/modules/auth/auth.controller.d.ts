@@ -17,6 +17,16 @@ export declare class AuthController {
     getCurrentUser(request: AuthenticatedRequest): {
         user: (Express.User & SessionUser) | undefined;
     };
+    searchUsers(request: AuthenticatedRequest, query: string): Promise<{
+        success: boolean;
+        data: {
+            id: string;
+            email: string;
+            username: string;
+            displayName: string;
+            avatarUrl: string | undefined;
+        }[];
+    }>;
     refresh(request: AuthenticatedRequest, response: Response): Promise<import("./types/token-payload").RefreshSessionResponse>;
     logout(request: AuthenticatedRequest, response: Response): Promise<{
         success: boolean;
