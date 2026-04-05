@@ -31,3 +31,4 @@ Thumbs.db
 
 .claude
 node_modules
+.mcp.json
