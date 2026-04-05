@@ -1,5 +1,5 @@
 import { AuthRequestConfig, http, setAccessToken } from './http'
-import { AuthSessionResponse, AuthUser } from '../types/auth'
+import { AuthSessionResponse, AuthUser, SearchableUser } from '../types/auth'
 
 export function startGoogleLogin() {
   window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/google`
@@ -30,6 +30,13 @@ export async function logout() {
   const { data } = await http.post<{ success: boolean }>('/auth/logout', undefined, config)
   setAccessToken(null)
   return data
+}
+
+export async function searchUsers(query: string): Promise<SearchableUser[]> {
+  const { data } = await http.get<{ success: true; data: SearchableUser[] }>('/auth/users/search', {
+    params: { q: query },
+  })
+  return data.data
 }
 
 export function readAuthErrorFromLocation(search: string) {

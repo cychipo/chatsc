@@ -1,12 +1,12 @@
 import { LayoutShell } from './components/layout-shell'
 import { ProtectedRoute } from './app/protected-route'
-import { HomePage } from './pages/home.page'
+import { ChatPage } from './features/chat'
 
 export default function App() {
   return (
     <LayoutShell>
       <ProtectedRoute>
-        <HomePage />
+        <ChatPage />
       </ProtectedRoute>
     </LayoutShell>
   )
