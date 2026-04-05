@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Avatar, Button, Input, Modal, Spin, Typography } from "antd";
-import {
-  Search,
-  Ellipsis,
-  UserRound,
-  Shield,
-  Cpu,
-  Menu,
-  Plus,
-  Settings,
-  Phone,
-  BookUser,
-  MessagesSquare,
-} from "lucide-react";
+import { Alert, Avatar, Button, Input, Modal, Spin, Typography } from "antd";
+import { Search, Ellipsis, Menu, Plus, Settings } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { searchUsers } from "../../services/auth.service";
 import {
@@ -22,10 +10,19 @@ import {
   getMessages,
   leaveConversation,
   listConversations,
-  sendMessage,
+  mapRealtimeMessage,
 } from "../../services/chat.service";
+import { chatSocketService } from "../../services/chat-socket.service";
 import type { SearchableUser } from "../../types/auth";
-import type { Conversation, MembershipEvent, Message } from "../../types/chat";
+import type {
+  ChatConnectionState,
+  ChatSocketError,
+  Conversation,
+  ConversationPreviewUpdate,
+  MembershipEvent,
+  Message,
+  RealtimeMessage,
+} from "../../types/chat";
 import { ChatComposer } from "./components/chat-composer";
 import { ConversationList } from "./components/conversation-list";
 import { EventBubble, MessageBubble } from "./components/message-bubble";
@@ -47,8 +44,66 @@ type ConversationContextMenuState = {
   y: number;
 };
 
+function upsertMessage(messages: Message[], message: Message) {
+  if (messages.some((item) => item._id === message._id)) {
+    return messages;
+  }
+
+  return [...messages, message].sort(
+    (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+  );
+}
+
+function updateConversationPreview(
+  conversations: Conversation[],
+  preview: ConversationPreviewUpdate,
+) {
+  const target = conversations.find(
+    (conversation) => conversation._id === preview.conversationId,
+  );
+
+  if (!target) {
+    return conversations;
+  }
+
+  const next = conversations.map((conversation) =>
+    conversation._id === preview.conversationId
+      ? {
+          ...conversation,
+          lastMessagePreview: preview.lastMessagePreview,
+          lastMessageAt: preview.lastMessageAt,
+        }
+      : conversation,
+  );
+
+  return next.sort((a, b) => {
+    const right = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    const left = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    return right - left;
+  });
+}
+
+function getConnectionLabel(state: ChatConnectionState) {
+  if (state === "connected") {
+    return { type: "success" as const, message: "Đã kết nối realtime" };
+  }
+
+  if (state === "connecting") {
+    return { type: "info" as const, message: "Đang kết nối realtime..." };
+  }
+
+  if (state === "reconnecting") {
+    return { type: "warning" as const, message: "Đang kết nối lại realtime..." };
+  }
+
+  return {
+    type: "error" as const,
+    message: "Mất kết nối realtime. Bạn chưa thể gửi tin nhắn.",
+  };
+}
+
 export function ChatPage() {
-  const { currentUser } = useAuthStore();
+  const { currentUser, isAuthenticated } = useAuthStore();
   const [state, setState] = useState<ChatState>({
     conversations: [],
     selectedConversationId: null,
@@ -62,13 +117,19 @@ export function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState("");
-  const [userSearchResults, setUserSearchResults] = useState<SearchableUser[]>([]);
+  const [userSearchResults, setUserSearchResults] = useState<SearchableUser[]>(
+    [],
+  );
   const [selectedUser, setSelectedUser] = useState<SearchableUser | null>(null);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [startingConversation, setStartingConversation] = useState(false);
   const [contextMenu, setContextMenu] =
     useState<ConversationContextMenuState | null>(null);
+  const [connectionState, setConnectionState] =
+    useState<ChatConnectionState>("disconnected");
+  const [chatError, setChatError] = useState<string | null>(null);
   const messageThreadRef = useRef<HTMLDivElement>(null);
+  const joinedConversationRef = useRef<string | null>(null);
 
   const palette = {
     page: "linear-gradient(180deg, #fbf4ea 0%, #fff8f1 100%)",
@@ -78,9 +139,165 @@ export function ChatPage() {
     border: "rgba(154, 52, 18, 0.12)",
   };
 
+  const selectedConversation = useMemo(
+    () =>
+      state.conversations.find(
+        (item) => item._id === state.selectedConversationId,
+      ) ?? null,
+    [state.conversations, state.selectedConversationId],
+  );
+
+  const combinedTimeline = useMemo(() => {
+    const eventItems =
+      selectedConversation?.type === "group"
+        ? state.membershipEvents.map((event) => ({
+            kind: "event" as const,
+            date: event.occurredAt,
+            event,
+          }))
+        : [];
+    const messageItems = state.messages.map((message) => ({
+      kind: "message" as const,
+      date: message.sentAt,
+      message,
+    }));
+    return [...eventItems, ...messageItems].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+  }, [selectedConversation?.type, state.membershipEvents, state.messages]);
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const conversations = await listConversations();
+      setState((prev) => ({
+        ...prev,
+        conversations,
+        loadingConversations: false,
+      }));
+    } catch {
+      setState((prev) => ({ ...prev, loadingConversations: false }));
+    }
+  }, []);
+
+  const selectConversation = useCallback(async (conversationId: string) => {
+    setChatError(null);
+    setState((prev) => ({
+      ...prev,
+      selectedConversationId: conversationId,
+      loadingMessages: true,
+      messages: [],
+      membershipEvents: [],
+      hasMoreMessages: true,
+    }));
+
+    try {
+      const [messages, membershipEvents] = await Promise.all([
+        getMessages(conversationId),
+        getMembershipEvents(conversationId),
+      ]);
+      setState((prev) => ({
+        ...prev,
+        messages: messages.reverse(),
+        membershipEvents,
+        loadingMessages: false,
+        hasMoreMessages: messages.length >= 10,
+      }));
+    } catch {
+      setState((prev) => ({ ...prev, loadingMessages: false }));
+    }
+  }, []);
+
+  const handleIncomingMessage = useCallback(
+    (incomingMessage: RealtimeMessage) => {
+      const message = mapRealtimeMessage(incomingMessage);
+      setState((prev) => ({
+        ...prev,
+        messages:
+          prev.selectedConversationId === message.conversationId
+            ? upsertMessage(prev.messages, message)
+            : prev.messages,
+      }));
+
+      if (incomingMessage.senderId === currentUser?.id) {
+        setInputValue("");
+        setState((prev) => ({ ...prev, sendingMessage: false }));
+      }
+    },
+    [currentUser?.id],
+  );
+
+  const handlePreviewUpdate = useCallback(
+    (preview: ConversationPreviewUpdate) => {
+      setState((prev) => ({
+        ...prev,
+        conversations: updateConversationPreview(prev.conversations, preview),
+      }));
+    },
+    [],
+  );
+
+  const handleSocketError = useCallback((error: ChatSocketError) => {
+    setChatError(error.message);
+    setState((prev) => ({ ...prev, sendingMessage: false }));
+  }, []);
+
   useEffect(() => {
     void loadConversations();
-  }, []);
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      chatSocketService.disconnect();
+      setConnectionState("disconnected");
+      return;
+    }
+
+    chatSocketService.connect();
+
+    const unsubscribeConnection = chatSocketService.onConnectionState(
+      (nextState) => {
+        setConnectionState(nextState);
+      },
+    );
+    const unsubscribeMessage = chatSocketService.onMessage(handleIncomingMessage);
+    const unsubscribePreview = chatSocketService.onPreview(handlePreviewUpdate);
+    const unsubscribeError = chatSocketService.onError(handleSocketError);
+
+    return () => {
+      unsubscribeConnection();
+      unsubscribeMessage();
+      unsubscribePreview();
+      unsubscribeError();
+      chatSocketService.disconnect();
+    };
+  }, [handleIncomingMessage, handlePreviewUpdate, handleSocketError, isAuthenticated]);
+
+  useEffect(() => {
+    if (!selectedConversationIdIsValid(state.selectedConversationId)) {
+      return;
+    }
+
+    const nextConversationId = state.selectedConversationId;
+    const previousConversationId = joinedConversationRef.current;
+
+    if (previousConversationId === nextConversationId) {
+      return;
+    }
+
+    const syncConversationSubscription = async () => {
+      try {
+        if (previousConversationId) {
+          await chatSocketService.leaveConversation(previousConversationId);
+        }
+        await chatSocketService.joinConversation(nextConversationId);
+        joinedConversationRef.current = nextConversationId;
+      } catch {
+        return;
+      }
+    };
+
+    void syncConversationSubscription();
+  }, [state.selectedConversationId]);
 
   useEffect(() => {
     if (!isNewChatModalOpen) {
@@ -128,76 +345,6 @@ export function ChatPage() {
     return () => window.removeEventListener("click", handleWindowClick);
   }, []);
 
-  const selectedConversation = useMemo(
-    () =>
-      state.conversations.find(
-        (item) => item._id === state.selectedConversationId,
-      ) ?? null,
-    [state.conversations, state.selectedConversationId],
-  );
-
-  const combinedTimeline = useMemo(() => {
-    const eventItems =
-      selectedConversation?.type === "group"
-        ? state.membershipEvents.map((event) => ({
-            kind: "event" as const,
-            date: event.occurredAt,
-            event,
-          }))
-        : [];
-    const messageItems = state.messages.map((message) => ({
-      kind: "message" as const,
-      date: message.sentAt,
-      message,
-    }));
-    return [...eventItems, ...messageItems].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-  }, [selectedConversation?.type, state.membershipEvents, state.messages]);
-
-  const loadConversations = async () => {
-    try {
-      const conversations = await listConversations();
-      setState((prev) => ({
-        ...prev,
-        conversations,
-        loadingConversations: false,
-      }));
-      if (!state.selectedConversationId && conversations[0]) {
-        await selectConversation(conversations[0]._id);
-      }
-    } catch {
-      setState((prev) => ({ ...prev, loadingConversations: false }));
-    }
-  };
-
-  const selectConversation = async (conversationId: string) => {
-    setState((prev) => ({
-      ...prev,
-      selectedConversationId: conversationId,
-      loadingMessages: true,
-      messages: [],
-      membershipEvents: [],
-      hasMoreMessages: true,
-    }));
-
-    try {
-      const [messages, membershipEvents] = await Promise.all([
-        getMessages(conversationId),
-        getMembershipEvents(conversationId),
-      ]);
-      setState((prev) => ({
-        ...prev,
-        messages: messages.reverse(),
-        membershipEvents,
-        loadingMessages: false,
-        hasMoreMessages: messages.length >= 10,
-      }));
-    } catch {
-      setState((prev) => ({ ...prev, loadingMessages: false }));
-    }
-  };
-
   const loadMoreMessages = useCallback(async () => {
     if (
       !state.selectedConversationId ||
@@ -243,25 +390,28 @@ export function ChatPage() {
   }, [loadMoreMessages, state.hasMoreMessages, state.loadingMessages]);
 
   const handleSend = async () => {
-    if (
-      !inputValue.trim() ||
-      !state.selectedConversationId ||
-      state.sendingMessage
-    )
+    if (!inputValue.trim()) {
+      setChatError("Tin nhắn không được để trống.");
       return;
+    }
 
+    if (!state.selectedConversationId || state.sendingMessage) {
+      return;
+    }
+
+    if (connectionState !== "connected") {
+      setChatError("Realtime chat chưa sẵn sàng để gửi tin nhắn.");
+      return;
+    }
+
+    setChatError(null);
     setState((prev) => ({ ...prev, sendingMessage: true }));
+
     try {
-      const message = await sendMessage(
+      await chatSocketService.sendMessage(
         state.selectedConversationId,
         inputValue.trim(),
       );
-      setState((prev) => ({
-        ...prev,
-        messages: [...prev.messages, message],
-        sendingMessage: false,
-      }));
-      setInputValue("");
     } catch {
       setState((prev) => ({ ...prev, sendingMessage: false }));
     }
@@ -270,6 +420,8 @@ export function ChatPage() {
   const handleLeave = async () => {
     if (!state.selectedConversationId) return;
     try {
+      await chatSocketService.leaveConversation(state.selectedConversationId);
+      joinedConversationRef.current = null;
       await leaveConversation(state.selectedConversationId);
       setState((prev) => ({
         ...prev,
@@ -299,6 +451,11 @@ export function ChatPage() {
     setContextMenu(null);
 
     try {
+      if (joinedConversationRef.current === conversationId) {
+        await chatSocketService.leaveConversation(conversationId);
+        joinedConversationRef.current = null;
+      }
+
       await deleteConversation(conversationId);
       const conversations = await listConversations();
 
@@ -359,7 +516,10 @@ export function ChatPage() {
   };
 
   const headerTitle =
-    selectedConversation?.displayTitle || selectedConversation?.title || "Đoạn chat";
+    selectedConversation?.displayTitle ||
+    selectedConversation?.title ||
+    "Đoạn chat";
+  const connectionLabel = getConnectionLabel(connectionState);
 
   return (
     <div
@@ -375,7 +535,11 @@ export function ChatPage() {
         <main style={styles.workspaceSimple}>
           <aside style={{ ...styles.sidebarSimple, ...styles.glass(palette) }}>
             <div style={styles.profileBlock}>
-              <Avatar size={48} src={currentUser?.avatarUrl} style={styles.profileAvatar}>
+              <Avatar
+                size={48}
+                src={currentUser?.avatarUrl}
+                style={styles.profileAvatar}
+              >
                 {currentUser?.displayName?.charAt(0).toUpperCase() ?? "U"}
               </Avatar>
               <div>
@@ -408,7 +572,7 @@ export function ChatPage() {
                 <ConversationList
                   conversations={state.conversations}
                   selectedId={state.selectedConversationId}
-                  onSelect={selectConversation}
+                  onSelect={(conversationId) => void selectConversation(conversationId)}
                   onContextMenu={handleConversationContextMenu}
                 />
               )}
@@ -423,43 +587,63 @@ export function ChatPage() {
           <section
             style={{ ...styles.chatMainSimple, ...styles.glass(palette) }}
           >
-            <header style={styles.chatHeaderSimple}>
-              <div style={styles.chatHeaderLeftSimple}>
-                <Button type="text" shape="circle" icon={<Menu size={18} />} />
-                <Avatar size={42} style={styles.chatHeaderAvatar}>
-                  E
-                </Avatar>
-                <div>
-                  <Typography.Title
-                    level={3}
-                    style={{
-                      margin: 0,
-                      color: palette.text,
-                      fontFamily: "Plus Jakarta Sans, sans-serif",
-                    }}
-                  >
-                    {headerTitle}
-                  </Typography.Title>
-                  <Typography.Text
-                    style={{ color: palette.textMuted, fontSize: 13 }}
-                  >
-                    Đang nhập...
-                  </Typography.Text>
+            <div style={styles.chatTopStack}>
+              <header style={styles.chatHeaderSimple}>
+                <div style={styles.chatHeaderLeftSimple}>
+                  <Button type="text" shape="circle" icon={<Menu size={18} />} />
+                  <Avatar size={42} style={styles.chatHeaderAvatar}>
+                    {headerTitle.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <div>
+                    <Typography.Title
+                      level={3}
+                      style={{
+                        margin: 0,
+                        color: palette.text,
+                        fontFamily: "Plus Jakarta Sans, sans-serif",
+                      }}
+                    >
+                      {headerTitle}
+                    </Typography.Title>
+                    <Typography.Text
+                      style={{ color: palette.textMuted, fontSize: 13 }}
+                    >
+                      {connectionLabel.message}
+                    </Typography.Text>
+                  </div>
                 </div>
-              </div>
-              <div style={styles.heroActions}>
-                <Button
-                  type="text"
-                  shape="circle"
-                  icon={<Search size={16} />}
+                <div style={styles.heroActions}>
+                  <Button
+                    type="text"
+                    shape="circle"
+                    icon={<Search size={16} />}
+                  />
+                  <Button
+                    type="text"
+                    shape="circle"
+                    icon={<Ellipsis size={16} />}
+                  />
+                </div>
+              </header>
+
+              <Alert
+                type={connectionLabel.type}
+                showIcon
+                message={connectionLabel.message}
+                style={styles.statusAlert}
+              />
+
+              {chatError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  closable
+                  message={chatError}
+                  onClose={() => setChatError(null)}
+                  style={styles.statusAlert}
                 />
-                <Button
-                  type="text"
-                  shape="circle"
-                  icon={<Ellipsis size={16} />}
-                />
-              </div>
-            </header>
+              ) : null}
+            </div>
 
             <div
               ref={messageThreadRef}
@@ -480,10 +664,10 @@ export function ChatPage() {
                       isMine={item.message.senderId === currentUser?.id}
                       authorName={
                         item.message.senderId === currentUser?.id
-                          ? currentUser?.displayName ?? "Bạn"
-                          : selectedConversation?.directPeer?.displayName ??
+                          ? (currentUser?.displayName ?? "Bạn")
+                          : (selectedConversation?.directPeer?.displayName ??
                             selectedConversation?.displayTitle ??
-                            "Người dùng"
+                            "Người dùng")
                       }
                     />
                   ),
@@ -497,7 +681,8 @@ export function ChatPage() {
               onSend={handleSend}
               onLeave={handleLeave}
               loading={state.sendingMessage}
-              disabled={!state.selectedConversationId || state.sendingMessage}
+              disabled={!state.selectedConversationId}
+              connectionState={connectionState}
             />
           </section>
         </main>
@@ -514,7 +699,9 @@ export function ChatPage() {
             <button
               type="button"
               style={styles.contextMenuItem}
-              onClick={() => void handleDeleteConversation(contextMenu.conversationId)}
+              onClick={() =>
+                void handleDeleteConversation(contextMenu.conversationId)
+              }
             >
               Xoá đoạn chat
             </button>
@@ -575,13 +762,19 @@ export function ChatPage() {
                         {user.displayName.charAt(0).toUpperCase()}
                       </Avatar>
                       <div style={styles.searchResultMeta}>
-                        <Typography.Text style={styles.searchResultName as never}>
+                        <Typography.Text
+                          style={styles.searchResultName as never}
+                        >
                           {user.displayName}
                         </Typography.Text>
-                        <Typography.Text style={styles.searchResultInfo as never}>
+                        <Typography.Text
+                          style={styles.searchResultInfo as never}
+                        >
                           @{user.username}
                         </Typography.Text>
-                        <Typography.Text style={styles.searchResultInfo as never}>
+                        <Typography.Text
+                          style={styles.searchResultInfo as never}
+                        >
                           {user.email}
                         </Typography.Text>
                       </div>
@@ -595,6 +788,12 @@ export function ChatPage() {
       </div>
     </div>
   );
+}
+
+function selectedConversationIdIsValid(
+  conversationId: string | null,
+): conversationId is string {
+  return Boolean(conversationId);
 }
 
 const styles = {
@@ -673,11 +872,16 @@ const styles = {
   } satisfies React.CSSProperties,
   chatMainSimple: {
     display: "grid",
-    gridTemplateRows: "auto 1fr auto auto",
+    gridTemplateRows: "auto minmax(0, 1fr) auto",
     gap: 14,
     borderRadius: 34,
     padding: 22,
     minHeight: 0,
+  } satisfies React.CSSProperties,
+  chatTopStack: {
+    display: "grid",
+    gap: 14,
+    alignContent: "start",
   } satisfies React.CSSProperties,
   chatHeaderSimple: {
     display: "flex",
@@ -716,6 +920,9 @@ const styles = {
     color: "#8d7168",
     fontSize: 12,
     fontWeight: 600,
+  } satisfies React.CSSProperties,
+  statusAlert: {
+    marginBottom: 0,
   } satisfies React.CSSProperties,
   modalContent: {
     display: "grid",
@@ -788,28 +995,5 @@ const styles = {
     padding: "10px 12px",
     borderRadius: 10,
     cursor: "pointer",
-  } satisfies React.CSSProperties,
-  bottomTabs: {
-    display: "flex",
-    gap: 10,
-    justifyContent: "space-between",
-    paddingTop: 2,
-  } satisfies React.CSSProperties,
-  bottomTab: {
-    border: "none",
-    background: "transparent",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    color: "#8d7168",
-    fontSize: 13,
-    fontWeight: 600,
-    padding: "8px 10px",
-    borderRadius: 999,
-    whiteSpace: "nowrap",
-  } satisfies React.CSSProperties,
-  bottomTabActive: {
-    color: "#c2410c",
-    background: "rgba(255, 241, 237, 0.85)",
   } satisfies React.CSSProperties,
 };

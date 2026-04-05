@@ -7,6 +7,7 @@ import {
   CreateConversationRequest,
   AddMemberRequest,
   GetMessagesQuery,
+  RealtimeMessage,
 } from '../types/chat'
 
 type ApiResponse<T> = {
@@ -41,20 +42,15 @@ export async function getMessages(conversationId: string, query?: GetMessagesQue
   return unwrap(data)
 }
 
-export async function sendMessage(conversationId: string, content: string) {
-  const encoder = new TextEncoder()
-  const binaryPayload = encoder.encode(content)
-  const { data } = await http.post<ApiResponse<Message>>(
-    `/chat/conversations/${conversationId}/messages`,
-    binaryPayload.buffer,
-    {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-      },
-      transformRequest: [(requestData) => requestData],
-    },
-  )
-  return unwrap(data)
+export function mapRealtimeMessage(message: RealtimeMessage): Message {
+  return {
+    _id: message.messageId,
+    conversationId: message.conversationId,
+    senderId: message.senderId,
+    content: message.content,
+    sentAt: message.sentAt,
+    deliveryStatus: 'sent',
+  }
 }
 
 export async function addMember(conversationId: string, req: AddMemberRequest) {

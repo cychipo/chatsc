@@ -16,13 +16,10 @@ import { AccessTokenAuthGuard } from '../auth/guards/access-token-auth.guard'
 import { SessionUser } from '../auth/types/auth-session'
 import { ChatService } from './chat.service'
 import { CreateConversationDto, AddMemberDto, GetMessagesQueryDto } from './dto/chat.dto'
-import { decodeBinaryMessage } from './utils/binary-message.util'
-import { mapChatError } from './utils/chat-error.util'
 import { requireActiveParticipant, requireAdminOrOwner } from './utils/participant-access.util'
 
 type AuthenticatedRequest = Request & {
   user?: SessionUser
-  body: Buffer
 }
 
 type ChatApiResponse<T> = {
@@ -86,28 +83,6 @@ export class ChatController {
     const limit = query.limit ? Math.min(Number(query.limit), 50) : 10
     const messages = await this.chatService.getMessages(conversationId, query.before, limit)
     return wrapSuccess(messages)
-  }
-
-  @Post('conversations/:conversationId/messages')
-  @HttpCode(HttpStatus.CREATED)
-  async sendMessage(
-    @Req() req: AuthenticatedRequest,
-    @Param('conversationId') conversationId: string,
-  ) {
-    const userId = req.user!.id
-    try {
-      await requireActiveParticipant(this.chatService, conversationId, userId)
-      console.log('[chat.sendMessage]', {
-        isBuffer: Buffer.isBuffer(req.body),
-        bodyType: req.body?.constructor?.name,
-        bodyLength: Buffer.isBuffer(req.body) ? req.body.length : undefined,
-      })
-      const content = decodeBinaryMessage(req.body)
-      const message = await this.chatService.sendMessage(conversationId, userId, content)
-      return wrapSuccess(message)
-    } catch (err) {
-      mapChatError(err)
-    }
   }
 
   @Post('conversations/:conversationId/members')
