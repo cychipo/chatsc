@@ -12,10 +12,16 @@ export class AuthAttempt {
   emailCandidate?: string
 
   @Prop({ required: true })
-  result!: 'started' | 'cancelled' | 'failed' | 'succeeded'
+  result!: string
 
   @Prop()
   failureReason?: string
+
+  @Prop()
+  userId?: string
+
+  @Prop()
+  sessionId?: string
 }
 
 export const AuthAttemptSchema = SchemaFactory.createForClass(AuthAttempt)

@@ -3,6 +3,8 @@ import { AuthController } from '../src/modules/auth/auth.controller'
 describe('AuthController session flow', () => {
   const authService = {
     recordAttempt: jest.fn(),
+    issueTokenPair: jest.fn(),
+    revokeRefreshToken: jest.fn(),
   }
 
   beforeEach(() => {
@@ -13,13 +15,11 @@ describe('AuthController session flow', () => {
     const controller = new AuthController(authService as never)
 
     const result = controller.getCurrentUser({
-      session: {
-        user: {
-          id: 'user-1',
-          email: 'user@example.com',
-          username: 'user',
-          displayName: 'User',
-        },
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+        username: 'user',
+        displayName: 'User',
       },
     } as never)
 
@@ -30,7 +30,10 @@ describe('AuthController session flow', () => {
     const controller = new AuthController(authService as never)
     const destroy = jest.fn((callback: (error?: Error) => void) => callback())
 
-    await controller.logout({ session: { destroy } } as never)
+    await controller.logout(
+      { session: { destroy }, headers: {} } as never,
+      { clearCookie: jest.fn() } as never,
+    )
 
     expect(destroy).toHaveBeenCalledTimes(1)
   })

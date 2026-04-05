@@ -39,6 +39,9 @@ describe('AuthService profile creation', () => {
       {
         create: jest.fn(),
       } as never,
+      {
+        findById: jest.fn(),
+      } as never,
     )
 
     const result = await authService.upsertGoogleUser({

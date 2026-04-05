@@ -23,6 +23,7 @@ async function bootstrap() {
         cookie: {
             httpOnly: true,
             sameSite: 'lax',
+            secure: false,
         },
     }));
     app.use(passport_1.default.initialize());

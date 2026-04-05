@@ -6,7 +6,9 @@ import { AuthService } from './auth.service'
 import { AuthSerializer } from './auth.serializer'
 import { GoogleAuthGuard } from './guards/google-auth.guard'
 import { SessionAuthGuard } from './guards/session-auth.guard'
+import { AccessTokenAuthGuard } from './guards/access-token-auth.guard'
 import { AuthAttempt, AuthAttemptSchema } from './schemas/auth-attempt.schema'
+import { RefreshSession, RefreshSessionSchema } from './schemas/refresh-session.schema'
 import { User, UserSchema } from './schemas/user.schema'
 import { GoogleStrategy } from './strategies/google.strategy'
 
@@ -16,10 +18,11 @@ import { GoogleStrategy } from './strategies/google.strategy'
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: AuthAttempt.name, schema: AuthAttemptSchema },
+      { name: RefreshSession.name, schema: RefreshSessionSchema },
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthSerializer, GoogleStrategy, GoogleAuthGuard, SessionAuthGuard],
-  exports: [AuthService],
+  providers: [AuthService, AuthSerializer, GoogleStrategy, GoogleAuthGuard, SessionAuthGuard, AccessTokenAuthGuard],
+  exports: [AuthService, AccessTokenAuthGuard],
 })
 export class AuthModule {}

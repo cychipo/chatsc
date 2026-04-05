@@ -4,6 +4,8 @@ const auth_controller_1 = require("../src/modules/auth/auth.controller");
 describe('AuthController', () => {
     const authService = {
         recordAttempt: jest.fn(),
+        issueTokenPair: jest.fn(),
+        revokeRefreshToken: jest.fn(),
     };
     beforeEach(() => {
         authService.recordAttempt.mockReset();
@@ -11,13 +13,11 @@ describe('AuthController', () => {
     it('returns the current session user', () => {
         const controller = new auth_controller_1.AuthController(authService);
         const result = controller.getCurrentUser({
-            session: {
-                user: {
-                    id: 'user-1',
-                    email: 'test@example.com',
-                    username: 'test',
-                    displayName: 'Test User',
-                },
+            user: {
+                id: 'user-1',
+                email: 'test@example.com',
+                username: 'test',
+                displayName: 'Test User',
             },
         });
         expect(result).toEqual({
@@ -36,7 +36,8 @@ describe('AuthController', () => {
             session: {
                 destroy,
             },
-        })).resolves.toEqual({ success: true });
+            headers: {},
+        }, { clearCookie: jest.fn() })).resolves.toEqual({ success: true });
         expect(destroy).toHaveBeenCalled();
     });
     it('builds failure redirect with auth error', async () => {

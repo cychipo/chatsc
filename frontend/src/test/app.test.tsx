@@ -10,12 +10,13 @@ vi.mock('../services/auth.service', async () => {
   return {
     ...actual,
     getCurrentUser: vi.fn(),
+    refreshSession: vi.fn(),
   }
 })
 
 describe('App', () => {
   it('renders the auth entry when the session is missing', async () => {
-    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('unauthorized'))
+    vi.mocked(authService.refreshSession).mockRejectedValue(new Error('unauthorized'))
 
     render(
       <AppProviders>

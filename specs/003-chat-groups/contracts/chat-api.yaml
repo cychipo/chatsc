@@ -1,0 +1,133 @@
+openapi: 3.0.3
+info:
+  title: Chat Groups API
+  version: 0.1.0
+paths:
+  /chat/conversations:
+    get:
+      summary: List user conversations
+      responses:
+        '200':
+          description: Conversation list
+    post:
+      summary: Create direct or group conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, participantIds]
+              properties:
+                type:
+                  type: string
+                  enum: [direct, group]
+                title:
+                  type: string
+                participantIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Conversation created
+  /chat/conversations/{conversationId}/messages:
+    get:
+      summary: Get messages with cursor pagination
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: before
+          required: false
+          schema: { type: string, description: ISO timestamp cursor }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        '200':
+          description: Message page
+    post:
+      summary: Send message using binary payload
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Message accepted and decoded
+        '400':
+          description: Invalid binary payload / decode error
+        '403':
+          description: Sender is not active participant
+  /chat/conversations/{conversationId}/members:
+    post:
+      summary: Add member to group
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+      responses:
+        '200':
+          description: Member added
+  /chat/conversations/{conversationId}/members/{userId}:
+    delete:
+      summary: Remove member from group
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Member removed
+        '403':
+          description: Insufficient permission
+  /chat/conversations/{conversationId}/leave:
+    post:
+      summary: Leave group conversation
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Left conversation
+  /chat/conversations/{conversationId}/events:
+    get:
+      summary: Get membership events timeline
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Membership events

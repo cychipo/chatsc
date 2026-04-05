@@ -3,8 +3,10 @@ export type AuthAttemptDocument = HydratedDocument<AuthAttempt>;
 export declare class AuthAttempt {
     provider: string;
     emailCandidate?: string;
-    result: 'started' | 'cancelled' | 'failed' | 'succeeded';
+    result: string;
     failureReason?: string;
+    userId?: string;
+    sessionId?: string;
 }
 export declare const AuthAttemptSchema: import("mongoose").Schema<AuthAttempt, import("mongoose").Model<AuthAttempt, any, any, any, import("mongoose").Document<unknown, any, AuthAttempt, any, {}> & AuthAttempt & {
     _id: import("mongoose").Types.ObjectId;

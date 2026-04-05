@@ -32,6 +32,8 @@ describe('AuthService profile creation', () => {
             create: jest.fn().mockResolvedValue(createdUser),
         }, {
             create: jest.fn(),
+        }, {
+            findById: jest.fn(),
         });
         const result = await authService.upsertGoogleUser({
             googleId: 'google-1',

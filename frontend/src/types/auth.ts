@@ -6,6 +6,15 @@ export type AuthUser = {
   avatarUrl?: string
 }
 
+export type AuthTokens = {
+  accessToken: string
+  expiresInSeconds: number
+}
+
+export type AuthSessionResponse = AuthTokens & {
+  user: AuthUser
+}
+
 export type AuthStatus = {
   isAuthenticated: boolean
   user: AuthUser | null

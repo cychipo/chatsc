@@ -30,6 +30,14 @@ __decorate([
     (0, mongoose_1.Prop)(),
     __metadata("design:type", String)
 ], AuthAttempt.prototype, "failureReason", void 0);
+__decorate([
+    (0, mongoose_1.Prop)(),
+    __metadata("design:type", String)
+], AuthAttempt.prototype, "userId", void 0);
+__decorate([
+    (0, mongoose_1.Prop)(),
+    __metadata("design:type", String)
+], AuthAttempt.prototype, "sessionId", void 0);
 exports.AuthAttempt = AuthAttempt = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], AuthAttempt);

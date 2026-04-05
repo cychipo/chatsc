@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { vi } from 'vitest'
+import { beforeEach, vi } from 'vitest'
 import App from '../App'
 import { AppProviders } from '../app/providers'
 import * as authService from '../services/auth.service'
@@ -10,6 +10,7 @@ vi.mock('../services/auth.service', async () => {
   return {
     ...actual,
     getCurrentUser: vi.fn(),
+    refreshSession: vi.fn(),
     startGoogleLogin: vi.fn(),
   }
 })
@@ -17,13 +18,15 @@ vi.mock('../services/auth.service', async () => {
 describe('OAuth login flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     vi.mocked(authService.getCurrentUser).mockReset()
+    vi.mocked(authService.refreshSession).mockReset()
     vi.mocked(authService.startGoogleLogin).mockReset()
     window.history.replaceState({}, document.title, '/')
   })
 
   it('renders login CTA when session is not available', async () => {
-    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('unauthorized'))
+    vi.mocked(authService.refreshSession).mockRejectedValue(new Error('unauthorized'))
 
     render(
       <AppProviders>
@@ -36,7 +39,7 @@ describe('OAuth login flow', () => {
   })
 
   it('starts Google login when CTA is clicked', async () => {
-    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('unauthorized'))
+    vi.mocked(authService.refreshSession).mockRejectedValue(new Error('unauthorized'))
 
     render(
       <AppProviders>
@@ -50,6 +53,16 @@ describe('OAuth login flow', () => {
   })
 
   it('renders protected home when session exists', async () => {
+    vi.mocked(authService.refreshSession).mockResolvedValue({
+      accessToken: 'access-token',
+      expiresInSeconds: 1800,
+      user: {
+        id: 'user-1',
+        email: 'alice@example.com',
+        username: 'alice',
+        displayName: 'Alice',
+      },
+    })
     vi.mocked(authService.getCurrentUser).mockResolvedValue({
       id: 'user-1',
       email: 'alice@example.com',
@@ -69,7 +82,7 @@ describe('OAuth login flow', () => {
   })
 
   it('shows auth error from redirect query string', async () => {
-    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('unauthorized'))
+    vi.mocked(authService.refreshSession).mockRejectedValue(new Error('unauthorized'))
     window.history.replaceState({}, document.title, '/?authError=google_auth_cancelled')
 
     render(

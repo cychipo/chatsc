@@ -15,7 +15,9 @@ const auth_service_1 = require("./auth.service");
 const auth_serializer_1 = require("./auth.serializer");
 const google_auth_guard_1 = require("./guards/google-auth.guard");
 const session_auth_guard_1 = require("./guards/session-auth.guard");
+const access_token_auth_guard_1 = require("./guards/access-token-auth.guard");
 const auth_attempt_schema_1 = require("./schemas/auth-attempt.schema");
+const refresh_session_schema_1 = require("./schemas/refresh-session.schema");
 const user_schema_1 = require("./schemas/user.schema");
 const google_strategy_1 = require("./strategies/google.strategy");
 let AuthModule = class AuthModule {
@@ -28,11 +30,12 @@ exports.AuthModule = AuthModule = __decorate([
             mongoose_1.MongooseModule.forFeature([
                 { name: user_schema_1.User.name, schema: user_schema_1.UserSchema },
                 { name: auth_attempt_schema_1.AuthAttempt.name, schema: auth_attempt_schema_1.AuthAttemptSchema },
+                { name: refresh_session_schema_1.RefreshSession.name, schema: refresh_session_schema_1.RefreshSessionSchema },
             ]),
         ],
         controllers: [auth_controller_1.AuthController],
-        providers: [auth_service_1.AuthService, auth_serializer_1.AuthSerializer, google_strategy_1.GoogleStrategy, google_auth_guard_1.GoogleAuthGuard, session_auth_guard_1.SessionAuthGuard],
-        exports: [auth_service_1.AuthService],
+        providers: [auth_service_1.AuthService, auth_serializer_1.AuthSerializer, google_strategy_1.GoogleStrategy, google_auth_guard_1.GoogleAuthGuard, session_auth_guard_1.SessionAuthGuard, access_token_auth_guard_1.AccessTokenAuthGuard],
+        exports: [auth_service_1.AuthService, access_token_auth_guard_1.AccessTokenAuthGuard],
     })
 ], AuthModule);
 //# sourceMappingURL=auth.module.js.map

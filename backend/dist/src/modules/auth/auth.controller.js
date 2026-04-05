@@ -14,9 +14,10 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const env_config_1 = require("../../config/env.config");
 const auth_service_1 = require("./auth.service");
 const google_auth_guard_1 = require("./guards/google-auth.guard");
-const session_auth_guard_1 = require("./guards/session-auth.guard");
+const access_token_auth_guard_1 = require("./guards/access-token-auth.guard");
 let AuthController = class AuthController {
     constructor(authService) {
         this.authService = authService;
@@ -30,10 +31,15 @@ let AuthController = class AuthController {
             await this.authService.recordAttempt({ result: 'failed', failureReason: 'missing-oauth-user' });
             return response.redirect(this.buildFrontendRedirect('oauth_failed'));
         }
-        request.session.user = oauthUser;
+        if (request.session) {
+            request.session.user = oauthUser;
+        }
+        const issuedSession = await this.authService.issueTokenPair(oauthUser);
+        this.setRefreshCookie(response, issuedSession.refreshToken);
         await this.authService.recordAttempt({
             result: 'succeeded',
             emailCandidate: oauthUser.email,
+            userId: oauthUser.id,
         });
         return response.redirect(this.buildFrontendRedirect());
     }
@@ -43,19 +49,39 @@ let AuthController = class AuthController {
     }
     getCurrentUser(request) {
         return {
-            user: request.session.user,
+            user: request.user,
         };
     }
-    async logout(request) {
-        await new Promise((resolve, reject) => {
-            request.session.destroy((error) => {
-                if (error) {
-                    reject(error);
-                    return;
-                }
-                resolve();
+    async refresh(request, response) {
+        const refreshToken = this.getRefreshTokenFromRequest(request);
+        if (!refreshToken) {
+            throw new common_1.UnauthorizedException({ code: 'refresh_token_missing', message: 'Refresh token is required' });
+        }
+        try {
+            return await this.authService.refreshAccessToken(refreshToken);
+        }
+        catch (error) {
+            this.clearRefreshCookie(response);
+            throw error;
+        }
+    }
+    async logout(request, response) {
+        const refreshToken = this.getRefreshTokenFromRequest(request);
+        if (refreshToken) {
+            await this.authService.revokeRefreshToken(refreshToken);
+        }
+        this.clearRefreshCookie(response);
+        if (request.session?.destroy) {
+            await new Promise((resolve, reject) => {
+                request.session?.destroy?.((error) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+                    resolve();
+                });
             });
-        });
+        }
         return {
             success: true,
         };
@@ -74,6 +100,38 @@ let AuthController = class AuthController {
         const url = new URL(frontendUrl);
         url.searchParams.set('authError', error);
         return url.toString();
+    }
+    getRefreshTokenFromRequest(request) {
+        const env = (0, env_config_1.backendEnv)();
+        const cookieHeader = request.headers.cookie;
+        if (!cookieHeader) {
+            return null;
+        }
+        const cookieParts = cookieHeader.split(';').map((part) => part.trim());
+        const cookieValue = cookieParts.find((part) => part.startsWith(`${env.REFRESH_COOKIE_NAME}=`));
+        if (!cookieValue) {
+            return null;
+        }
+        return decodeURIComponent(cookieValue.slice(env.REFRESH_COOKIE_NAME.length + 1));
+    }
+    setRefreshCookie(response, refreshToken) {
+        const env = (0, env_config_1.backendEnv)();
+        response.cookie(env.REFRESH_COOKIE_NAME, refreshToken, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: false,
+            maxAge: env.REFRESH_TOKEN_TTL_SECONDS * 1000,
+            path: '/',
+        });
+    }
+    clearRefreshCookie(response) {
+        const env = (0, env_config_1.backendEnv)();
+        response.clearCookie(env.REFRESH_COOKIE_NAME, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: false,
+            path: '/',
+        });
     }
 };
 exports.AuthController = AuthController;
@@ -102,17 +160,26 @@ __decorate([
 ], AuthController.prototype, "handleGoogleFailure", null);
 __decorate([
     (0, common_1.Get)('me'),
-    (0, common_1.UseGuards)(session_auth_guard_1.SessionAuthGuard),
+    (0, common_1.UseGuards)(access_token_auth_guard_1.AccessTokenAuthGuard),
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "getCurrentUser", null);
 __decorate([
+    (0, common_1.Post)('refresh'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "refresh", null);
+__decorate([
     (0, common_1.Post)('logout'),
     __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "logout", null);
 __decorate([

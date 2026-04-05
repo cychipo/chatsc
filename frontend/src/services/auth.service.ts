@@ -1,5 +1,5 @@
-import { http } from './http'
-import { AuthUser } from '../types/auth'
+import { AuthRequestConfig, http, setAccessToken } from './http'
+import { AuthSessionResponse, AuthUser } from '../types/auth'
 
 export function startGoogleLogin() {
   window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/google`
@@ -10,10 +10,25 @@ export async function getCurrentUser(): Promise<AuthUser> {
   return data.user
 }
 
-export async function logout() {
-  const { data } = await http.post<{ success: boolean }>('/auth/logout', undefined, {
+export async function refreshSession(): Promise<AuthSessionResponse> {
+  const config: AuthRequestConfig = {
     withCredentials: true,
-  })
+    skipAuthRefresh: true,
+  }
+  const response = await http.post<AuthSessionResponse>('/auth/refresh', undefined, config)
+  const data = response.data
+
+  setAccessToken(data.accessToken)
+  return data
+}
+
+export async function logout() {
+  const config: AuthRequestConfig = {
+    withCredentials: true,
+    skipAuthRefresh: true,
+  }
+  const { data } = await http.post<{ success: boolean }>('/auth/logout', undefined, config)
+  setAccessToken(null)
   return data
 }
 

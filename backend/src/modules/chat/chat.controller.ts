@@ -1,12 +1,20 @@
-import { Controller, Get } from '@nestjs/common'
+import { Controller, Get, Req, UseGuards } from '@nestjs/common'
+import { AccessTokenAuthGuard } from '../auth/guards/access-token-auth.guard'
+import { SessionUser } from '../auth/types/auth-session'
+
+type AuthenticatedRequest = Request & {
+  user?: SessionUser
+}
 
 @Controller('chat')
 export class ChatController {
   @Get('status')
-  getStatus() {
+  @UseGuards(AccessTokenAuthGuard)
+  getStatus(@Req() request: AuthenticatedRequest) {
     return {
       feature: 'chat',
-      status: 'placeholder',
+      status: 'ready',
+      user: request.user,
     }
   }
 }
