@@ -10,7 +10,7 @@ export const glassTheme = {
 
 export const appShellStyle: React.CSSProperties = {
   minHeight: '100vh',
-  padding: 24,
+  padding: 0,
   background:
     'radial-gradient(circle at top left, rgba(251, 146, 60, 0.18), transparent 24%), radial-gradient(circle at top right, rgba(245, 158, 11, 0.16), transparent 22%), linear-gradient(180deg, #fffaf5 0%, #fff7ed 42%, #ffedd5 100%)',
   color: '#431407',

@@ -52,6 +52,12 @@ let AuthController = class AuthController {
             user: request.user,
         };
     }
+    async searchUsers(request, query) {
+        return {
+            success: true,
+            data: await this.authService.searchUsers(query ?? '', request.user.id),
+        };
+    }
     async refresh(request, response) {
         const refreshToken = this.getRefreshTokenFromRequest(request);
         if (!refreshToken) {
@@ -166,6 +172,15 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "getCurrentUser", null);
+__decorate([
+    (0, common_1.Get)('users/search'),
+    (0, common_1.UseGuards)(access_token_auth_guard_1.AccessTokenAuthGuard),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "searchUsers", null);
 __decorate([
     (0, common_1.Post)('refresh'),
     __param(0, (0, common_1.Req)()),

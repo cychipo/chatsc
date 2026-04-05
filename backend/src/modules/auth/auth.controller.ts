@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { backendEnv } from '../../config/env.config'
 import { AuthService } from './auth.service'
@@ -62,6 +62,15 @@ export class AuthController {
   getCurrentUser(@Req() request: AuthenticatedRequest) {
     return {
       user: request.user,
+    }
+  }
+
+  @Get('users/search')
+  @UseGuards(AccessTokenAuthGuard)
+  async searchUsers(@Req() request: AuthenticatedRequest, @Query('q') query: string) {
+    return {
+      success: true,
+      data: await this.authService.searchUsers(query ?? '', request.user!.id),
     }
   }
 

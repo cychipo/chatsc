@@ -32,3 +32,5 @@ Thumbs.db
 .claude
 node_modules
 .mcp.json
+backend/dist/
+frontend/dist/

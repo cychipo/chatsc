@@ -6,6 +6,14 @@ export type AuthUser = {
   avatarUrl?: string
 }
 
+export type SearchableUser = {
+  id: string
+  email: string
+  username: string
+  displayName: string
+  avatarUrl?: string
+}
+
 export type AuthTokens = {
   accessToken: string
   expiresInSeconds: number

@@ -39,6 +39,27 @@ let AuthService = class AuthService {
     async findByEmail(email) {
         return this.userModel.findOne({ email }).lean();
     }
+    async searchUsers(query, currentUserId) {
+        const trimmedQuery = query.trim();
+        if (trimmedQuery.length < 2) {
+            return [];
+        }
+        const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(escapedQuery, 'i');
+        const users = await this.userModel
+            .find({
+            _id: { $ne: new mongoose_2.Types.ObjectId(currentUserId) },
+            $or: [
+                { email: searchRegex },
+                { username: searchRegex },
+                { displayName: searchRegex },
+            ],
+        })
+            .sort({ username: 1 })
+            .limit(10)
+            .lean();
+        return users.map((user) => this.toSessionUser(user));
+    }
     async upsertGoogleUser(payload) {
         const existingUser = await this.userModel.findOne({ email: payload.email });
         if (existingUser) {

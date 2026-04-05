@@ -36,6 +36,13 @@ export declare class AuthService {
     }> & Required<{
         _id: Types.ObjectId;
     }>) | null>;
+    searchUsers(query: string, currentUserId: string): Promise<{
+        id: string;
+        email: string;
+        username: string;
+        displayName: string;
+        avatarUrl: string | undefined;
+    }[]>;
     upsertGoogleUser(payload: GoogleAuthUser): Promise<{
         id: string;
         email: string;
