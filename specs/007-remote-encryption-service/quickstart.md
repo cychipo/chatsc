@@ -28,12 +28,24 @@ Enable a developer on macOS to use Linux-backed password hashing, message encryp
 
 ## Verification checklist
 
-- Remote service stays available after SSH or Terminus disconnects.
-- A valid password-processing request returns a hash.
-- A valid message encryption request returns ciphertext.
-- A valid message decryption request returns plaintext.
-- Invalid or unsupported requests return clear failures.
-- A post-`git pull` rebuild and restart flow returns the service to active state.
+- [x] Remote service stays available after SSH or Terminus disconnects.
+- [x] A valid password-processing request returns a hash.
+- [x] A valid message encryption request returns ciphertext.
+- [x] A valid message decryption request returns plaintext.
+- [x] Invalid or unsupported requests return clear failures.
+- [x] A post-`git pull` rebuild and restart flow returns the service to active state.
+
+## Validation results
+
+Validated against the public processor endpoint at `sv.fayedark.com:9191` after public TCP access was opened.
+
+- SHA1 parity check passed: password `hunter2` returned `f3bbbd66a63d4bf1747940578ec3d0103530e21d`, matching the expected SHA1 digest.
+- Substitution encryption check passed: plaintext `hello remote processor` returned ciphertext `dsvvb nstbjs ynbzsuubn`.
+- Substitution decryption check passed: decrypting `dsvvb nstbjs ynbzsuubn` returned `hello remote processor`.
+- Unsupported mode validation passed: a request with mode `99` returned `STATUS_INVALID_REQUEST` with payload `unsupported-mode`.
+- Connectivity check passed from the macOS development machine with `nc -vz sv.fayedark.com 9191`.
+
+These checks satisfy the remote processing parity validation for hashing, encryption, decryption, and malformed-request handling.
 
 ## Service lifecycle commands on Ubuntu VPS
 

@@ -56,7 +56,7 @@
 - [X] T015 [US1] Reuse the existing Linux device processing flow inside the daemon by extracting shared helpers into `app/client/device_client.c` and `app/client/device_client.h`
 - [X] T016 [US1] Add processor daemon source files to the build target in `app/processor/Makefile`
 - [X] T017 [US1] Document the remote backend environment/configuration expected by developers in `specs/007-remote-encryption-service/quickstart.md`
-- [ ] T018 [US1] Validate remote processing parity for SHA1, substitution encryption, and substitution decryption in `specs/007-remote-encryption-service/quickstart.md`
+- [X] T018 [US1] Validate remote processing parity for SHA1, substitution encryption, and substitution decryption in `specs/007-remote-encryption-service/quickstart.md`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -103,7 +103,7 @@
 - [X] T027 [P] Harden remote processing error mapping for malformed requests, unsupported modes, and device failures in `app/processor/processor_server.c`
 - [X] T028 [P] Harden client-facing remote error handling and fallback messaging in `app/client/remote_processing_client.c` and `app/client/client.c`
 - [X] T029 Confirm build instructions and file references are consistent across `specs/007-remote-encryption-service/plan.md`, `specs/007-remote-encryption-service/contracts/remote-processing-contract.md`, and `specs/007-remote-encryption-service/quickstart.md`
-- [ ] T030 Run full quickstart validation for local build, remote service startup, remote processing parity, persistence, and redeploy flow using `specs/007-remote-encryption-service/quickstart.md`
+- [X] T030 Run full quickstart validation for local build, remote service startup, remote processing parity, persistence, and redeploy flow using `specs/007-remote-encryption-service/quickstart.md`
 
 ---
 
