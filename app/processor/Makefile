@@ -1,9 +1,9 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -Werror -I../shared -I. -I../processor
+CFLAGS := -Wall -Wextra -Werror -I../shared -I../client -I.
 LDFLAGS := -pthread
 BUILD_DIR ?= ../../build
-TARGET := $(BUILD_DIR)/client
-SRCS := client.c device_client.c processing_client.c remote_processing_client.c ../shared/protocol.c
+TARGET := $(BUILD_DIR)/processor
+SRCS := processor_server.c processor_validation.c ../client/device_client.c ../shared/protocol.c
 
 .PHONY: all clean
 

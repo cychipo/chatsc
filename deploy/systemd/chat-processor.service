@@ -1,0 +1,17 @@
+[Unit]
+Description=Chat remote processing daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/chatsc
+ExecStart=/opt/chatsc/build/processor ${CHAT_PROCESSOR_BIND_HOST:-0.0.0.0} ${CHAT_PROCESSOR_PORT:-9191} ${CHAT_DEVICE_PATH:-/dev/device}
+Restart=always
+RestartSec=2
+User=root
+Environment=CHAT_PROCESSOR_BIND_HOST=0.0.0.0
+Environment=CHAT_PROCESSOR_PORT=9191
+Environment=CHAT_DEVICE_PATH=/dev/device
+
+[Install]
+WantedBy=multi-user.target

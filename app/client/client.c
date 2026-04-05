@@ -1,4 +1,4 @@
-#include "device_client.h"
+#include "processing_client.h"
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -13,7 +13,7 @@
 
 typedef struct {
     int sockfd;
-    const char *device_path;
+    processing_client_config_t processing_config;
     char username[CHAT_MAX_USERNAME];
     char current_peer[CHAT_MAX_USERNAME];
     int running;
@@ -73,13 +73,20 @@ static void ui_print_tagged(client_runtime_t *runtime, const char *tag, const ch
     pthread_mutex_unlock(&runtime->ui_lock);
 }
 
-static void ui_print_banner(client_runtime_t *runtime, const char *host, int port, const char *device_path) {
+static void ui_print_banner(client_runtime_t *runtime, const char *host, int port) {
     ui_print_line(runtime, "%s========================================%s",
                   ui_style(runtime, "\033[1m"), ui_style(runtime, "\033[0m"));
     ui_print_line(runtime, "%s Socket Chat Client%s",
                   ui_style(runtime, "\033[1;36m"), ui_style(runtime, "\033[0m"));
-    ui_print_line(runtime, " device : %s", device_path);
     ui_print_line(runtime, " server : %s:%d", host, port);
+    ui_print_line(runtime, " processing : %s",
+                  processing_backend_name(runtime->processing_config.backend));
+    if (runtime->processing_config.backend == PROCESSING_BACKEND_LOCAL) {
+        ui_print_line(runtime, " device : %s", runtime->processing_config.device_path);
+    } else {
+        ui_print_line(runtime, " processor : %s:%d", runtime->processing_config.remote_host,
+                      runtime->processing_config.remote_port);
+    }
     ui_print_line(runtime, "%s========================================%s",
                   ui_style(runtime, "\033[1m"), ui_style(runtime, "\033[0m"));
 }
@@ -212,17 +219,18 @@ static int write_full(int fd, const void *buffer, size_t size) {
     return 0;
 }
 
-static int process_with_driver(const char *device_path, unsigned int message_id, request_type_t request_type,
-                               processing_mode_t mode, const char *username, const char *peer_username,
-                               const char *auth_payload, const char *payload, char *output, size_t output_size) {
+static int process_message(client_runtime_t *runtime, unsigned int message_id, request_type_t request_type,
+                           processing_mode_t mode, const char *username, const char *peer_username,
+                           const char *auth_payload, const char *payload, const char *plaintext_payload,
+                           char *output, size_t output_size) {
     chat_request_t device_request;
     chat_response_t device_response;
 
     if (format_device_request(&device_request, message_id, request_type, mode, username, peer_username,
-                              auth_payload, payload, NULL) != 0) {
+                              auth_payload, payload, plaintext_payload) != 0) {
         return -1;
     }
-    if (device_process_message(device_path, &device_request, &device_response) != 0) {
+    if (processing_client_process(&runtime->processing_config, &device_request, &device_response) != 0) {
         return -1;
     }
     if (device_response.status != STATUS_OK) {
@@ -264,9 +272,9 @@ static void *receiver_thread_main(void *arg) {
     while (read_full(runtime->sockfd, &response, sizeof(response)) == 0) {
         if (response.response_type == RESPONSE_CHAT_DELIVERY) {
             char plaintext[CHAT_MAX_MESSAGE];
-            if (process_with_driver(runtime->device_path, response.message_id, REQUEST_CHAT_MESSAGE,
-                                    PROCESS_SUBSTITUTION_DECRYPT, runtime->username, response.from_username,
-                                    NULL, response.payload, plaintext, sizeof(plaintext)) == 0) {
+            if (process_message(runtime, response.message_id, REQUEST_CHAT_MESSAGE,
+                                PROCESS_SUBSTITUTION_DECRYPT, runtime->username, response.from_username,
+                                NULL, response.payload, NULL, plaintext, sizeof(plaintext)) == 0) {
                 ui_print_received_message(runtime, response.from_username, plaintext);
             } else {
                 ui_print_tagged(runtime, "error", "\033[1;31m", "message from %s could not be decrypted", response.from_username);
@@ -292,8 +300,8 @@ static int submit_auth_request(client_runtime_t *runtime, unsigned int *message_
     chat_request_t request;
     char digest[CHAT_MAX_RESULT];
 
-    if (process_with_driver(runtime->device_path, (*message_id)++, type, PROCESS_SHA1,
-                            username, NULL, password, NULL, digest, sizeof(digest)) != 0) {
+    if (process_message(runtime, (*message_id)++, type, PROCESS_SHA1,
+                        username, NULL, password, NULL, NULL, digest, sizeof(digest)) != 0) {
         ui_print_tagged(runtime, "error", "\033[1;31m", "driver auth hashing failed");
         return -1;
     }
@@ -370,8 +378,8 @@ static int chat_loop(client_runtime_t *runtime, unsigned int *message_id, char *
             return -1;
         }
 
-        if (process_with_driver(runtime->device_path, *message_id, REQUEST_CHAT_MESSAGE, PROCESS_SUBSTITUTION,
-                                runtime->username, peer_username, NULL, line, encrypted, sizeof(encrypted)) != 0) {
+        if (process_message(runtime, *message_id, REQUEST_CHAT_MESSAGE, PROCESS_SUBSTITUTION,
+                            runtime->username, peer_username, NULL, line, NULL, encrypted, sizeof(encrypted)) != 0) {
             ui_print_tagged(runtime, "error", "\033[1;31m", "driver message processing failed");
             continue;
         }
@@ -414,7 +422,10 @@ int main(int argc, char **argv) {
     if (runtime.sockfd < 0) {
         return 1;
     }
-    runtime.device_path = device_path;
+    if (processing_client_init(&runtime.processing_config, device_path) != 0) {
+        close(runtime.sockfd);
+        return 1;
+    }
     runtime.running = 1;
     runtime.use_color = isatty(STDOUT_FILENO) ? 1 : 0;
     pthread_mutex_init(&runtime.ack_lock, NULL);
@@ -427,7 +438,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    ui_print_banner(&runtime, host, port, device_path);
+    ui_print_banner(&runtime, host, port);
     ui_print_tagged(&runtime, "info", "\033[1;34m", "socket connected");
     ui_print_tagged(&runtime, "info", "\033[1;34m", "terminal UI redraws the prompt when new messages arrive");
 
