@@ -1,5 +1,11 @@
 import { AuthRequestConfig, http, setAccessToken } from './http'
-import { AuthSessionResponse, AuthUser, SearchableUser } from '../types/auth'
+import {
+  AuthSessionResponse,
+  AuthUser,
+  LoginLocalAuthRequest,
+  RegisterLocalAuthRequest,
+  SearchableUser,
+} from '../types/auth'
 
 export function startGoogleLogin() {
   window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/google`
@@ -8,6 +14,24 @@ export function startGoogleLogin() {
 export async function getCurrentUser(): Promise<AuthUser> {
   const { data } = await http.get<{ user: AuthUser }>('/auth/me', { withCredentials: true })
   return data.user
+}
+
+export async function registerLocalAccount(payload: RegisterLocalAuthRequest): Promise<AuthSessionResponse> {
+  const response = await http.post<AuthSessionResponse>('/auth/register', payload, {
+    withCredentials: true,
+  })
+  const data = response.data
+  setAccessToken(data.accessToken)
+  return data
+}
+
+export async function loginLocalAccount(payload: LoginLocalAuthRequest): Promise<AuthSessionResponse> {
+  const response = await http.post<AuthSessionResponse>('/auth/login', payload, {
+    withCredentials: true,
+  })
+  const data = response.data
+  setAccessToken(data.accessToken)
+  return data
 }
 
 export async function refreshSession(): Promise<AuthSessionResponse> {

@@ -3,10 +3,12 @@ import { HydratedDocument } from 'mongoose'
 
 export type AuthAttemptDocument = HydratedDocument<AuthAttempt>
 
+export type AuthProvider = 'google' | 'local-register' | 'local-login' | 'refresh-token'
+
 @Schema({ timestamps: true })
 export class AuthAttempt {
   @Prop({ required: true, default: 'google' })
-  provider!: string
+  provider!: AuthProvider
 
   @Prop()
   emailCandidate?: string

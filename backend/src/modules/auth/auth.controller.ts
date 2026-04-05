@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common'
 import { Request, Response } from 'express'
 import { backendEnv } from '../../config/env.config'
 import { AuthService } from './auth.service'
@@ -6,6 +16,12 @@ import { GoogleAuthGuard } from './guards/google-auth.guard'
 import { SessionAuthGuard } from './guards/session-auth.guard'
 import { AccessTokenAuthGuard } from './guards/access-token-auth.guard'
 import { SessionUser } from './types/auth-session'
+import {
+  LoginLocalAuthDto,
+  RegisterLocalAuthDto,
+  validateLoginLocalAuthDto,
+  validateRegisterLocalAuthDto,
+} from './dto/local-auth.dto'
 
 type AuthenticatedRequest = Request & {
   user?: SessionUser
@@ -55,6 +71,66 @@ export class AuthController {
   async handleGoogleFailure(@Res() response: Response) {
     await this.authService.recordAttempt({ result: 'cancelled', failureReason: 'google-auth-cancelled' })
     return response.redirect(this.buildFrontendRedirect('google_auth_cancelled'))
+  }
+
+  @Post('register')
+  async registerLocal(
+    @Body() payload: RegisterLocalAuthDto,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const validated = validateRegisterLocalAuthDto(payload)
+
+    if (!validated.ok) {
+      throw new UnauthorizedException({
+        code: validated.code,
+        message: validated.message,
+      })
+    }
+
+    const issuedSession = await this.authService.registerLocalAccount(validated.value)
+
+    if (request.session) {
+      request.session.user = issuedSession.user
+    }
+
+    this.setRefreshCookie(response, issuedSession.refreshToken)
+
+    return {
+      accessToken: issuedSession.accessToken,
+      expiresInSeconds: issuedSession.expiresInSeconds,
+      user: issuedSession.user,
+    }
+  }
+
+  @Post('login')
+  async loginLocal(
+    @Body() payload: LoginLocalAuthDto,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const validated = validateLoginLocalAuthDto(payload)
+
+    if (!validated.ok) {
+      throw new UnauthorizedException({
+        code: validated.code,
+        message: validated.message,
+      })
+    }
+
+    const issuedSession = await this.authService.loginLocalAccount(validated.value)
+
+    if (request.session) {
+      request.session.user = issuedSession.user
+    }
+
+    this.setRefreshCookie(response, issuedSession.refreshToken)
+
+    return {
+      accessToken: issuedSession.accessToken,
+      expiresInSeconds: issuedSession.expiresInSeconds,
+      user: issuedSession.user,
+    }
   }
 
   @Get('me')

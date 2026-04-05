@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { PassportModule } from '@nestjs/passport'
 import { AuthController } from './auth.controller'
+import { AuthProcessingService } from './auth-processing.service'
 import { AuthService } from './auth.service'
 import { AuthSerializer } from './auth.serializer'
 import { GoogleAuthGuard } from './guards/google-auth.guard'
@@ -22,7 +23,7 @@ import { GoogleStrategy } from './strategies/google.strategy'
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthSerializer, GoogleStrategy, GoogleAuthGuard, SessionAuthGuard, AccessTokenAuthGuard],
-  exports: [AuthService, AccessTokenAuthGuard],
+  providers: [AuthService, AuthProcessingService, AuthSerializer, GoogleStrategy, GoogleAuthGuard, SessionAuthGuard, AccessTokenAuthGuard],
+  exports: [AuthService, AuthProcessingService, AccessTokenAuthGuard],
 })
 export class AuthModule {}

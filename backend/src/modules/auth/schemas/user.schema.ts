@@ -3,10 +3,27 @@ import { HydratedDocument } from 'mongoose'
 
 export type UserDocument = HydratedDocument<User>
 
+@Schema({ _id: false })
+class LocalAuthMetadata {
+  @Prop({ default: false })
+  enabled!: boolean
+
+  @Prop()
+  passwordSha1?: string
+
+  @Prop()
+  passwordUpdatedAt?: Date
+
+  @Prop()
+  createdVia?: string
+}
+
+const LocalAuthMetadataSchema = SchemaFactory.createForClass(LocalAuthMetadata)
+
 @Schema({ timestamps: true })
 export class User {
-  @Prop({ required: true, unique: true })
-  googleId!: string
+  @Prop({ unique: true, sparse: true })
+  googleId?: string
 
   @Prop({ required: true, unique: true })
   email!: string
@@ -22,6 +39,9 @@ export class User {
 
   @Prop({ default: 'active' })
   status!: string
+
+  @Prop({ type: LocalAuthMetadataSchema })
+  localAuth?: LocalAuthMetadata
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

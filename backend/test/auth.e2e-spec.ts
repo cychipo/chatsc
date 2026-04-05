@@ -169,6 +169,10 @@ describe('Refresh token auth flow', () => {
         this.id = 'session-1'
         this.save = jest.fn().mockResolvedValue(this)
       } as never,
+      {
+        isLocalAuthEnabled: jest.fn(),
+        hashPasswordWithSha1: jest.fn(),
+      } as never,
     )
 
     const issuedSession = await authServiceInstance.issueTokenPair(userRecord)

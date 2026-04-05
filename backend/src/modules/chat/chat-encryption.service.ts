@@ -94,16 +94,16 @@ export class ChatEncryptionService {
   ) {
     const env = backendEnv()
 
-    if (!env.CHAT_REVERSE_ENCRYPTION_HOST) {
-      throw new ChatProcessingError('REVERSE_ENCRYPTION_CONFIG_MISSING', 'Thiếu cấu hình host của dịch vụ mã hoá ngược')
+    if (!env.PROCESSOR_REMOTE_HOST) {
+      throw new ChatProcessingError('REVERSE_ENCRYPTION_CONFIG_MISSING', 'Thiếu cấu hình host của remote processor dùng chung')
     }
 
-    if (env.CHAT_REVERSE_ENCRYPTION_PORT <= 0) {
-      throw new ChatProcessingError('REVERSE_ENCRYPTION_CONFIG_INVALID', 'Cấu hình cổng dịch vụ mã hoá ngược không hợp lệ')
+    if (env.PROCESSOR_REMOTE_PORT <= 0) {
+      throw new ChatProcessingError('REVERSE_ENCRYPTION_CONFIG_INVALID', 'Cấu hình cổng remote processor dùng chung không hợp lệ')
     }
 
     const request = this.buildRequest(mode, content, context)
-    const response = await this.exchange(request, env.CHAT_REVERSE_ENCRYPTION_HOST, env.CHAT_REVERSE_ENCRYPTION_PORT, env.CHAT_REVERSE_ENCRYPTION_TIMEOUT_MS)
+    const response = await this.exchange(request, env.PROCESSOR_REMOTE_HOST, env.PROCESSOR_REMOTE_PORT, env.PROCESSOR_REMOTE_TIMEOUT_MS)
 
     if (response.status !== STATUS_OK) {
       throw new ChatProcessingError(failureCode, `${failureMessage}: ${response.payload || 'processor-error'}`)
