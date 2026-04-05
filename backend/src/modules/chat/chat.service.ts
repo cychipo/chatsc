@@ -1,11 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { AuthService } from '../auth/auth.service'
 import { SessionUser } from '../auth/types/auth-session'
+import { ChatEncryptionService } from './chat-encryption.service'
 import { Conversation, ConversationDocument } from './schemas/conversation.schema'
 import { ConversationParticipant, ConversationParticipantDocument } from './schemas/conversation-participant.schema'
-import { Message, MessageDocument } from './schemas/message.schema'
+import { Message, MessageDocument, ReverseEncryptionState } from './schemas/message.schema'
 import { MembershipEvent, MembershipEventDocument } from './schemas/membership-event.schema'
 
 type ConversationSummary = {
@@ -22,12 +23,16 @@ type ConversationSummary = {
   directPeer?: SessionUser
 }
 
+export type MessageDisplayState = 'ready' | 'decode_failed'
+
 export type RealtimeMessagePayload = {
   messageId: string
   conversationId: string
   senderId: string
   content: string
   sentAt: string
+  decodeErrorCode?: string
+  displayState?: MessageDisplayState
 }
 
 export type ConversationPreviewPayload = {
@@ -54,6 +59,7 @@ export class ChatService {
     @InjectModel(MembershipEvent.name)
     private membershipEventModel: Model<MembershipEventDocument>,
     private authService: AuthService,
+    private chatEncryptionService: ChatEncryptionService,
   ) {}
 
   async listConversationsForUser(userId: string): Promise<ConversationSummary[]> {
@@ -99,7 +105,7 @@ export class ChatService {
               conversation.lastMessageAt?.toISOString(),
             displayTitle,
             displayAvatarUrl: directPeer?.avatarUrl,
-            lastMessagePreview: latestMessage?.content,
+            lastMessagePreview: latestMessage ? (await this.toDisplayMessage(latestMessage)).content : undefined,
             directPeer: directPeer ?? undefined,
           }
         }
@@ -115,7 +121,7 @@ export class ChatService {
             latestMessage?.sentAt?.toISOString() ??
             conversation.lastMessageAt?.toISOString(),
           displayTitle: conversation.title ?? 'Nhóm chat',
-          lastMessagePreview: latestMessage?.content,
+          lastMessagePreview: latestMessage ? (await this.toDisplayMessage(latestMessage)).content : undefined,
         }
       }),
     )
@@ -242,12 +248,20 @@ export class ChatService {
       })
     }
 
+    const encrypted = await this.chatEncryptionService.encryptForStorage(trimmedContent, {
+      senderId,
+      conversationId,
+    })
+
     const message = await this.messageModel.create({
       conversationId: new Types.ObjectId(conversationId),
       senderId: new Types.ObjectId(senderId),
-      content: trimmedContent,
+      content: encrypted.content,
+      reverseEncryptionState: encrypted.reverseEncryptionState,
+      encryptedContentVersion: encrypted.reverseEncryptionState === 'encrypted' ? 'reverse-v1' : undefined,
       sentAt: new Date(),
       deliveryStatus: 'sent',
+      decodeErrorCode: encrypted.decodeErrorCode,
     })
 
     await this.conversationModel.updateOne(
@@ -269,7 +283,9 @@ export class ChatService {
     if (before) {
       query.sentAt = { $lt: new Date(before) }
     }
-    return this.messageModel.find(query).sort({ sentAt: -1 }).limit(Math.min(limit, 50)).lean()
+
+    const messages = await this.messageModel.find(query).sort({ sentAt: -1 }).limit(Math.min(limit, 50)).lean()
+    return Promise.all(messages.map((message) => this.toDisplayMessage(message)))
   }
 
   async buildConversationPreviewPayload(conversationId: string): Promise<ConversationPreviewPayload> {
@@ -279,10 +295,11 @@ export class ChatService {
       .lean()
 
     const conversation = await this.conversationModel.findById(conversationId).lean()
+    const previewMessage = latestMessage ? await this.toDisplayMessage(latestMessage) : null
 
     return {
       conversationId,
-      lastMessagePreview: latestMessage?.content ?? '',
+      lastMessagePreview: previewMessage?.content ?? '',
       lastMessageAt:
         latestMessage?.sentAt?.toISOString() ??
         conversation?.lastMessageAt?.toISOString() ??
@@ -397,19 +414,48 @@ export class ChatService {
     return participant
   }
 
-  toRealtimeMessagePayload(message: {
+  async toRealtimeMessagePayload(message: {
     _id: Types.ObjectId | { toString(): string }
     conversationId: Types.ObjectId | { toString(): string }
     senderId: Types.ObjectId | { toString(): string }
     content: string
     sentAt: Date
-  }): RealtimeMessagePayload {
-    return {
-      messageId: message._id.toString(),
-      conversationId: message.conversationId.toString(),
-      senderId: message.senderId.toString(),
-      content: message.content,
-      sentAt: message.sentAt.toISOString(),
+    reverseEncryptionState?: ReverseEncryptionState
+    decodeErrorCode?: string
+  }): Promise<RealtimeMessagePayload> {
+    try {
+      const display = await this.chatEncryptionService.decryptForDisplay(
+        message.content,
+        message.reverseEncryptionState,
+        {
+          senderId: message.senderId.toString(),
+          conversationId: message.conversationId.toString(),
+        },
+      )
+
+      return {
+        messageId: message._id.toString(),
+        conversationId: message.conversationId.toString(),
+        senderId: message.senderId.toString(),
+        content: display.content,
+        sentAt: message.sentAt.toISOString(),
+        decodeErrorCode: display.decodeErrorCode,
+        displayState: display.displayState,
+      }
+    } catch (error) {
+      const failureCode = error instanceof Error && 'code' in error && typeof error.code === 'string'
+        ? error.code
+        : 'REVERSE_DECRYPTION_UNAVAILABLE'
+
+      return {
+        messageId: message._id.toString(),
+        conversationId: message.conversationId.toString(),
+        senderId: message.senderId.toString(),
+        content: message.content,
+        sentAt: message.sentAt.toISOString(),
+        decodeErrorCode: failureCode,
+        displayState: 'decode_failed' as const,
+      }
     }
   }
 
@@ -422,7 +468,7 @@ export class ChatService {
       }
     }
 
-    if (error instanceof BadRequestException) {
+    if (error instanceof BadRequestException || error instanceof ServiceUnavailableException) {
       const response = error.getResponse() as { code?: string; message?: string | string[] }
       const message = Array.isArray(response.message)
         ? response.message[0]
@@ -439,6 +485,43 @@ export class ChatService {
       code: 'CHAT_ERROR',
       message: error instanceof Error ? error.message : 'Unknown chat error',
       conversationId,
+    }
+  }
+
+  private async toDisplayMessage<T extends {
+    content: string
+    senderId: Types.ObjectId | { toString(): string }
+    conversationId: Types.ObjectId | { toString(): string }
+    reverseEncryptionState?: ReverseEncryptionState
+    decodeErrorCode?: string
+  }>(message: T) {
+    try {
+      const display = await this.chatEncryptionService.decryptForDisplay(
+        message.content,
+        message.reverseEncryptionState,
+        {
+          senderId: message.senderId.toString(),
+          conversationId: message.conversationId.toString(),
+        },
+      )
+
+      return {
+        ...message,
+        content: display.content,
+        decodeErrorCode: display.decodeErrorCode,
+        displayState: display.displayState,
+      }
+    } catch (error) {
+      const failureCode = error instanceof Error && 'code' in error && typeof error.code === 'string'
+        ? error.code
+        : 'REVERSE_DECRYPTION_UNAVAILABLE'
+
+      return {
+        ...message,
+        content: '[Không thể khôi phục nội dung tin nhắn]',
+        decodeErrorCode: failureCode,
+        displayState: 'decode_failed' as const,
+      }
     }
   }
 }

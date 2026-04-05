@@ -6,6 +6,6 @@ type AppStore = {
 }
 
 export const useAppStore = create<AppStore>((set) => ({
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
   setApiBaseUrl: (value) => set({ apiBaseUrl: value }),
 }))

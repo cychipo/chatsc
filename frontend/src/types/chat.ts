@@ -17,6 +17,7 @@ export type ConversationPeer = {
   id: string
   username: string
   displayName: string
+  email?: string
   avatarUrl?: string
 }
 
@@ -49,6 +50,7 @@ export type ConversationParticipant = {
 }
 
 export type DeliveryStatus = 'sent' | 'failed'
+export type MessageDisplayState = 'ready' | 'decode_failed'
 
 export type Message = {
   _id: string
@@ -58,6 +60,7 @@ export type Message = {
   sentAt: string
   deliveryStatus: DeliveryStatus
   decodeErrorCode?: string
+  displayState?: MessageDisplayState
 }
 
 export type RealtimeMessage = {
@@ -66,6 +69,8 @@ export type RealtimeMessage = {
   senderId: string
   content: string
   sentAt: string
+  decodeErrorCode?: string
+  displayState?: MessageDisplayState
 }
 
 export type ConversationPreviewUpdate = {
