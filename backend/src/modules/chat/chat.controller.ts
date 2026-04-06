@@ -15,7 +15,7 @@ import {
 import { AccessTokenAuthGuard } from '../auth/guards/access-token-auth.guard'
 import { SessionUser } from '../auth/types/auth-session'
 import { ChatService } from './chat.service'
-import { CreateConversationDto, AddMemberDto, GetMessagesQueryDto } from './dto/chat.dto'
+import { CreateConversationDto, AddMemberDto, GetMessagesQueryDto, MarkConversationReadDto } from './dto/chat.dto'
 import { requireActiveParticipant, requireAdminOrOwner } from './utils/participant-access.util'
 
 type AuthenticatedRequest = Request & {
@@ -77,7 +77,7 @@ export class ChatController {
     @Req() req: AuthenticatedRequest,
     @Param('conversationId') conversationId: string,
     @Query() query: GetMessagesQueryDto,
-  ) {
+  ): Promise<ChatApiResponse<Awaited<ReturnType<ChatService['getMessages']>>> > {
     const userId = req.user!.id
     await requireActiveParticipant(this.chatService, conversationId, userId)
     const limit = query.limit ? Math.min(Number(query.limit), 50) : 10
@@ -129,6 +129,26 @@ export class ChatController {
     await requireActiveParticipant(this.chatService, conversationId, userId)
     await this.chatService.deleteConversationForUser(conversationId, userId)
     return wrapSuccess({ deleted: true })
+  }
+
+  @Post('conversations/:conversationId/read')
+  async markConversationRead(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Body() dto: MarkConversationReadDto,
+  ) {
+    const userId = req.user!.id
+
+    if (dto.conversationId !== conversationId) {
+      throw new BadRequestException({
+        error: 'CONVERSATION_MISMATCH',
+        message: 'Conversation ID in body must match route param',
+      })
+    }
+
+    await requireActiveParticipant(this.chatService, conversationId, userId)
+    const result = await this.chatService.markConversationRead(conversationId, userId)
+    return wrapSuccess(result)
   }
 
   @Get('conversations/:conversationId/events')

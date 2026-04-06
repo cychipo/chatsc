@@ -6,7 +6,7 @@ import { SessionUser } from '../auth/types/auth-session'
 import { ChatEncryptionService } from './chat-encryption.service'
 import { Conversation, ConversationDocument } from './schemas/conversation.schema'
 import { ConversationParticipant, ConversationParticipantDocument } from './schemas/conversation-participant.schema'
-import { Message, MessageDocument, ReverseEncryptionState } from './schemas/message.schema'
+import { Message, MessageDocument, ReverseEncryptionState, SeenState } from './schemas/message.schema'
 import { MembershipEvent, MembershipEventDocument } from './schemas/membership-event.schema'
 
 type ConversationSummary = {
@@ -20,6 +20,8 @@ type ConversationSummary = {
   displayTitle: string
   displayAvatarUrl?: string
   lastMessagePreview?: string
+  unreadCount: number
+  hasUnread: boolean
   directPeer?: SessionUser
 }
 
@@ -31,6 +33,8 @@ export type RealtimeMessagePayload = {
   senderId: string
   content: string
   sentAt: string
+  seenState?: SeenState
+  isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
 }
@@ -39,6 +43,28 @@ export type ConversationPreviewPayload = {
   conversationId: string
   lastMessagePreview: string
   lastMessageAt: string
+  unreadCount: number
+  hasUnread: boolean
+}
+
+export type MarkConversationReadPayload = {
+  conversationId: string
+  unreadCount: number
+  lastReadMessageId?: string
+}
+
+export type ChatMessagePayload = {
+  _id: Types.ObjectId | { toString(): string }
+  conversationId: Types.ObjectId | { toString(): string }
+  senderId: Types.ObjectId | { toString(): string }
+  content: string
+  sentAt: Date
+  deliveryStatus?: 'sent' | 'failed'
+  seenState?: SeenState
+  isTailOfSenderGroup?: boolean
+  decodeErrorCode?: string
+  displayState?: MessageDisplayState
+  reverseEncryptionState?: ReverseEncryptionState
 }
 
 export type RealtimeErrorPayload = {
@@ -66,6 +92,9 @@ export class ChatService {
     const participations = await this.participantModel
       .find({ userId: new Types.ObjectId(userId), status: 'active' })
       .lean()
+    const participationByConversationId = new Map(
+      participations.map((participant) => [participant.conversationId.toString(), participant]),
+    )
     const conversationIds = participations.map((p) => p.conversationId)
     const conversations = await this.conversationModel
       .find({ _id: { $in: conversationIds } })
@@ -82,12 +111,15 @@ export class ChatService {
           createdAt?: Date
           updatedAt?: Date
         }
+        const participant = participationByConversationId.get(conversation._id.toString())
+        const unreadCount = participant?.unreadCount ?? 0
+        const hasUnread = unreadCount > 0
 
         if (conversation.type === 'direct') {
           const participants = await this.participantModel
             .find({ conversationId: conversation._id, status: 'active' })
             .lean()
-          const peerParticipant = participants.find((participant) => participant.userId.toString() !== userId)
+          const peerParticipant = participants.find((participantItem) => participantItem.userId.toString() !== userId)
           const directPeer = peerParticipant
             ? await this.authService.findById(peerParticipant.userId.toString())
             : null
@@ -106,6 +138,8 @@ export class ChatService {
             displayTitle,
             displayAvatarUrl: directPeer?.avatarUrl,
             lastMessagePreview: latestMessage ? (await this.toDisplayMessage(latestMessage)).content : undefined,
+            unreadCount,
+            hasUnread,
             directPeer: directPeer ?? undefined,
           }
         }
@@ -122,6 +156,8 @@ export class ChatService {
             conversation.lastMessageAt?.toISOString(),
           displayTitle: conversation.title ?? 'Nhóm chat',
           lastMessagePreview: latestMessage ? (await this.toDisplayMessage(latestMessage)).content : undefined,
+          unreadCount,
+          hasUnread,
         }
       }),
     )
@@ -190,16 +226,15 @@ export class ChatService {
   }
 
   async findDirectConversation(userAId: string, userBId: string) {
-    const activeParticipants = await this.participantModel
+    const allParticipants = await this.participantModel
       .find({
         userId: { $in: [new Types.ObjectId(userAId), new Types.ObjectId(userBId)] },
-        status: 'active',
       })
       .lean()
 
     const conversationIdsByUser = new Map<string, Set<string>>()
 
-    for (const participant of activeParticipants) {
+    for (const participant of allParticipants) {
       const key = participant.userId.toString()
       const existingIds = conversationIdsByUser.get(key) ?? new Set<string>()
       existingIds.add(participant.conversationId.toString())
@@ -224,15 +259,20 @@ export class ChatService {
 
     for (const conversation of conversations) {
       const participants = await this.participantModel
-        .find({ conversationId: conversation._id, status: 'active' })
+        .find({ conversationId: conversation._id })
         .lean()
 
-      if (participants.length === 2) {
-        const participantIds = new Set(participants.map((participant) => participant.userId.toString()))
-        if (participantIds.has(userAId) && participantIds.has(userBId)) {
-          return conversation
-        }
+      if (participants.length !== 2) {
+        continue
       }
+
+      const participantIds = new Set(participants.map((participant) => participant.userId.toString()))
+
+      if (!participantIds.has(userAId) || !participantIds.has(userBId)) {
+        continue
+      }
+
+      return conversation
     }
 
     return null
@@ -248,6 +288,8 @@ export class ChatService {
       })
     }
 
+    const activeSender = await this.getRequiredActiveParticipant(conversationId, senderId)
+    const restoredParticipants = await this.restoreDirectParticipantsIfNeeded(conversationId, senderId)
     const encrypted = await this.chatEncryptionService.encryptForStorage(trimmedContent, {
       senderId,
       conversationId,
@@ -261,6 +303,7 @@ export class ChatService {
       encryptedContentVersion: encrypted.reverseEncryptionState === 'encrypted' ? 'reverse-v1' : undefined,
       sentAt: new Date(),
       deliveryStatus: 'sent',
+      seenState: 'sent',
       decodeErrorCode: encrypted.decodeErrorCode,
     })
 
@@ -269,33 +312,66 @@ export class ChatService {
       { lastMessageAt: message.sentAt },
     )
 
-    return message
+    await this.participantModel.updateOne(
+      { _id: activeSender._id },
+      {
+        lastReadMessageId: message._id,
+        lastReadAt: message.sentAt,
+        unreadCount: 0,
+      },
+    )
+
+    await this.incrementUnreadForOtherParticipants(conversationId, senderId, message._id, message.sentAt)
+
+    return {
+      message,
+      restoredParticipants,
+    }
   }
 
   async sendRealtimeMessage(conversationId: string, senderId: string, content: string) {
-    await this.getRequiredActiveParticipant(conversationId, senderId)
-    const message = await this.sendMessage(conversationId, senderId, content)
-    return this.toRealtimeMessagePayload(message)
+    const { message, restoredParticipants } = await this.sendMessage(conversationId, senderId, content)
+    return {
+      message: await this.toRealtimeMessagePayload(message),
+      previewByUserId: await this.buildConversationPreviewPayloads(conversationId),
+      restoredParticipants,
+    }
   }
 
-  async getMessages(conversationId: string, before?: string, limit = 10) {
+  async getMessages(conversationId: string, before?: string, limit = 10): Promise<ChatMessagePayload[]> {
     const query: Record<string, unknown> = { conversationId: new Types.ObjectId(conversationId) }
     if (before) {
       query.sentAt = { $lt: new Date(before) }
     }
 
     const messages = await this.messageModel.find(query).sort({ sentAt: -1 }).limit(Math.min(limit, 50)).lean()
-    return Promise.all(messages.map((message) => this.toDisplayMessage(message)))
+    const sortedMessages = messages.reverse()
+
+    return Promise.all(
+      sortedMessages.map(async (message, index) => {
+        const nextMessage = sortedMessages[index + 1]
+        const displayMessage = await this.toDisplayMessage(message)
+
+        return {
+          ...displayMessage,
+          isTailOfSenderGroup: nextMessage ? nextMessage.senderId.toString() !== message.senderId.toString() : true,
+        }
+      }),
+    )
   }
 
-  async buildConversationPreviewPayload(conversationId: string): Promise<ConversationPreviewPayload> {
+  async buildConversationPreviewPayload(conversationId: string, userId: string): Promise<ConversationPreviewPayload> {
     const latestMessage = await this.messageModel
       .findOne({ conversationId: new Types.ObjectId(conversationId) })
       .sort({ sentAt: -1 })
       .lean()
 
     const conversation = await this.conversationModel.findById(conversationId).lean()
+    const participant = await this.participantModel
+      .findOne({ conversationId: new Types.ObjectId(conversationId), userId: new Types.ObjectId(userId), status: 'active' })
+      .lean()
     const previewMessage = latestMessage ? await this.toDisplayMessage(latestMessage) : null
+    const unreadCount = participant?.unreadCount ?? 0
 
     return {
       conversationId,
@@ -304,6 +380,73 @@ export class ChatService {
         latestMessage?.sentAt?.toISOString() ??
         conversation?.lastMessageAt?.toISOString() ??
         new Date().toISOString(),
+      unreadCount,
+      hasUnread: unreadCount > 0,
+    }
+  }
+
+  async buildConversationPreviewPayloads(conversationId: string) {
+    const participants = await this.getActiveParticipants(conversationId)
+
+    return Promise.all(
+      participants.map(async (participant) => ({
+        userId: participant.userId.toString(),
+        preview: await this.buildConversationPreviewPayload(conversationId, participant.userId.toString()),
+      })),
+    )
+  }
+
+  async markConversationRead(conversationId: string, userId: string): Promise<MarkConversationReadPayload> {
+    const participant = await this.getRequiredActiveParticipant(conversationId, userId)
+    const latestMessage = await this.messageModel
+      .findOne({ conversationId: new Types.ObjectId(conversationId) })
+      .sort({ sentAt: -1 })
+
+    if (!latestMessage) {
+      await this.participantModel.updateOne(
+        { _id: participant._id },
+        { unreadCount: 0 },
+      )
+
+      return {
+        conversationId,
+        unreadCount: 0,
+      }
+    }
+
+    await this.participantModel.updateOne(
+      { _id: participant._id },
+      {
+        lastReadMessageId: latestMessage._id,
+        lastReadAt: new Date(),
+        unreadCount: 0,
+      },
+    )
+
+    const conversationParticipants = await this.participantModel
+      .find({ conversationId: new Types.ObjectId(conversationId), status: 'active' })
+      .lean()
+    const otherParticipantIds = conversationParticipants
+      .filter((conversationParticipant) => conversationParticipant.userId.toString() !== userId)
+      .map((conversationParticipant) => conversationParticipant.userId)
+
+    if (otherParticipantIds.length > 0) {
+      await this.messageModel.updateMany(
+        {
+          conversationId: new Types.ObjectId(conversationId),
+          senderId: { $in: otherParticipantIds },
+          sentAt: { $lte: latestMessage.sentAt },
+        },
+        {
+          seenState: 'seen',
+        },
+      )
+    }
+
+    return {
+      conversationId,
+      unreadCount: 0,
+      lastReadMessageId: latestMessage._id.toString(),
     }
   }
 
@@ -420,6 +563,7 @@ export class ChatService {
     senderId: Types.ObjectId | { toString(): string }
     content: string
     sentAt: Date
+    seenState?: SeenState
     reverseEncryptionState?: ReverseEncryptionState
     decodeErrorCode?: string
   }): Promise<RealtimeMessagePayload> {
@@ -439,6 +583,8 @@ export class ChatService {
         senderId: message.senderId.toString(),
         content: display.content,
         sentAt: message.sentAt.toISOString(),
+        seenState: message.seenState,
+        isTailOfSenderGroup: true,
         decodeErrorCode: display.decodeErrorCode,
         displayState: display.displayState,
       }
@@ -453,10 +599,65 @@ export class ChatService {
         senderId: message.senderId.toString(),
         content: message.content,
         sentAt: message.sentAt.toISOString(),
+        seenState: message.seenState,
+        isTailOfSenderGroup: true,
         decodeErrorCode: failureCode,
         displayState: 'decode_failed' as const,
       }
     }
+  }
+
+  private async restoreDirectParticipantsIfNeeded(conversationId: string, senderId: string) {
+    const conversation = await this.conversationModel.findById(conversationId).lean()
+
+    if (!conversation || conversation.type !== 'direct') {
+      return [] as ConversationParticipantDocument[]
+    }
+
+    const participants = await this.participantModel
+      .find({ conversationId: new Types.ObjectId(conversationId) })
+      .sort({ joinedAt: 1 })
+
+    const participantsToRestore = participants.filter((participant) => (
+      participant.userId.toString() !== senderId
+      && participant.status === 'left'
+    ))
+
+    if (participantsToRestore.length === 0) {
+      return [] as ConversationParticipantDocument[]
+    }
+
+    await Promise.all(
+      participantsToRestore.map((participant) => this.participantModel.updateOne(
+        { _id: participant._id },
+        {
+          status: 'active',
+          leftAt: undefined,
+        },
+      )),
+    )
+
+    return this.participantModel.find({
+      _id: { $in: participantsToRestore.map((participant) => participant._id) },
+    })
+  }
+
+  private async incrementUnreadForOtherParticipants(
+    conversationId: string,
+    senderId: string,
+    _messageId: Types.ObjectId,
+    _sentAt: Date,
+  ) {
+    await this.participantModel.updateMany(
+      {
+        conversationId: new Types.ObjectId(conversationId),
+        userId: { $ne: new Types.ObjectId(senderId) },
+        status: 'active',
+      },
+      {
+        $inc: { unreadCount: 1 },
+      },
+    )
   }
 
   normalizeRealtimeError(error: unknown, conversationId?: string): RealtimeErrorPayload {

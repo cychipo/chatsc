@@ -28,6 +28,15 @@ export class ConversationParticipant {
 
   @Prop()
   leftAt?: Date
+
+  @Prop({ type: Types.ObjectId, ref: 'Message' })
+  lastReadMessageId?: Types.ObjectId
+
+  @Prop()
+  lastReadAt?: Date
+
+  @Prop({ required: true, default: 0 })
+  unreadCount!: number
 }
 
 export const ConversationParticipantSchema = SchemaFactory.createForClass(ConversationParticipant)

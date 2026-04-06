@@ -1,5 +1,5 @@
 import { Avatar, Typography } from 'antd'
-import { Shield, UserRound } from 'lucide-react'
+import { UserRound } from 'lucide-react'
 import type { Message, MembershipEvent } from '../../../types/chat'
 
 type MessageBubbleProps = {
@@ -10,19 +10,30 @@ type MessageBubbleProps = {
 
 export function MessageBubble({ message, isMine, authorName }: MessageBubbleProps) {
   return (
-    <article style={{ ...styles.wrapper, flexDirection: isMine ? 'row-reverse' : 'row' }}>
-      <Avatar size={28} style={isMine ? styles.myAvatar : styles.theirAvatar}>
-        {isMine ? <Shield size={13} /> : <UserRound size={13} />}
-      </Avatar>
+    <article style={{ ...styles.wrapper, justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+      <div style={{ ...styles.row, flexDirection: isMine ? 'row-reverse' : 'row' }}>
+        {!isMine ? (
+          <Avatar size={28} style={styles.theirAvatar}>
+            <UserRound size={13} />
+          </Avatar>
+        ) : null}
 
-      <div style={{ ...styles.contentWrap, alignItems: isMine ? 'flex-end' : 'flex-start' }}>
-        <div style={styles.meta}>
-          <strong style={styles.author}>{authorName}</strong>
-          <span style={styles.time}>{new Date(message.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
+        <div style={{ ...styles.contentWrap, alignItems: isMine ? 'flex-end' : 'flex-start' }}>
+          {!isMine ? (
+            <div style={styles.meta}>
+              <strong style={styles.author}>{authorName}</strong>
+              <span style={styles.time}>{new Date(message.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          ) : null}
 
-        <div style={{ ...styles.bubble, ...(isMine ? styles.outgoing : styles.incoming) }}>
-          <Typography.Paragraph style={styles.content as never}>{message.content}</Typography.Paragraph>
+          <div style={{ ...styles.bubble, ...(isMine ? styles.outgoing : styles.incoming) }}>
+            <Typography.Paragraph style={styles.content as never}>{message.content}</Typography.Paragraph>
+          </div>
+          {isMine && message.isTailOfSenderGroup ? (
+            <Typography.Text style={styles.statusText as never}>
+              {message.seenState === 'seen' ? 'Đã xem' : 'Đã gửi'}
+            </Typography.Text>
+          ) : null}
         </div>
       </div>
     </article>
@@ -51,14 +62,18 @@ export function EventBubble({ event }: { event: MembershipEvent }) {
 const styles: Record<string, React.CSSProperties> = {
   wrapper: {
     display: 'flex',
-    gap: 10,
-    marginBottom: 8,
-    alignItems: 'flex-start',
+    width: '100%',
+    marginBottom: 4,
+  },
+  row: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'flex-end',
+    maxWidth: '78%',
   },
   contentWrap: {
     display: 'grid',
-    gap: 6,
-    flex: 1,
+    gap: 4,
   },
   meta: {
     display: 'flex',
@@ -77,9 +92,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bubble: {
     width: 'fit-content',
-    maxWidth: '82%',
-    padding: '14px 16px',
-    borderRadius: 24,
+    maxWidth: '100%',
+    padding: '12px 14px',
+    borderRadius: 18,
   },
   incoming: {
     background: '#ffe2db',
@@ -96,6 +111,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'inherit',
     lineHeight: 1.55,
     fontSize: 13,
+  },
+  statusText: {
+    color: '#8d7168',
+    fontSize: 11,
+    lineHeight: 1.2,
   },
   eventWrap: {
     display: 'flex',

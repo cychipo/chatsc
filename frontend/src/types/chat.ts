@@ -32,6 +32,8 @@ export type Conversation = {
   displayTitle?: string
   displayAvatarUrl?: string
   lastMessagePreview?: string
+  unreadCount?: number
+  hasUnread?: boolean
   directPeer?: ConversationPeer
 }
 
@@ -52,6 +54,8 @@ export type ConversationParticipant = {
 export type DeliveryStatus = 'sent' | 'failed'
 export type MessageDisplayState = 'ready' | 'decode_failed'
 
+export type SeenState = 'sent' | 'seen'
+
 export type Message = {
   _id: string
   conversationId: string
@@ -59,6 +63,8 @@ export type Message = {
   content: string
   sentAt: string
   deliveryStatus: DeliveryStatus
+  seenState?: SeenState
+  isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
 }
@@ -69,6 +75,8 @@ export type RealtimeMessage = {
   senderId: string
   content: string
   sentAt: string
+  seenState?: SeenState
+  isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
 }
@@ -77,6 +85,8 @@ export type ConversationPreviewUpdate = {
   conversationId: string
   lastMessagePreview: string
   lastMessageAt: string
+  unreadCount?: number
+  hasUnread?: boolean
 }
 
 export type MembershipEventType = 'added' | 'joined' | 'left' | 'removed'
@@ -89,6 +99,19 @@ export type MembershipEvent = {
   actorUserId?: string
   occurredAt: string
   metadata?: Record<string, unknown>
+}
+
+export type MarkConversationReadResponse = {
+  conversationId: string
+  unreadCount: number
+  lastReadMessageId?: string
+}
+
+export type TypingPresenceUpdate = {
+  conversationId: string
+  userId: string
+  isTyping: boolean
+  expiresAt?: string
 }
 
 export type CreateConversationRequest = {

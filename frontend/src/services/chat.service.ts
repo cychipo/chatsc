@@ -7,6 +7,7 @@ import {
   CreateConversationRequest,
   AddMemberRequest,
   GetMessagesQuery,
+  MarkConversationReadResponse,
   RealtimeMessage,
 } from '../types/chat'
 
@@ -50,6 +51,8 @@ export function mapRealtimeMessage(message: RealtimeMessage): Message {
     content: message.content,
     sentAt: message.sentAt,
     deliveryStatus: 'sent',
+    seenState: message.seenState,
+    isTailOfSenderGroup: message.isTailOfSenderGroup,
     decodeErrorCode: message.decodeErrorCode,
     displayState: message.displayState,
   }
@@ -80,6 +83,14 @@ export async function leaveConversation(conversationId: string) {
 export async function deleteConversation(conversationId: string) {
   const { data } = await http.delete<ApiResponse<{ deleted: boolean }>>(
     `/chat/conversations/${conversationId}`,
+  )
+  return unwrap(data)
+}
+
+export async function markConversationRead(conversationId: string) {
+  const { data } = await http.post<ApiResponse<MarkConversationReadResponse>>(
+    `/chat/conversations/${conversationId}/read`,
+    { conversationId },
   )
   return unwrap(data)
 }

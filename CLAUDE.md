@@ -1,6 +1,6 @@
 # chatsc Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-05
+Auto-generated from all feature plans. Last updated: 2026-04-06
 
 ## Active Technologies
 - TypeScript cho cả frontend và backend; Node.js LTS cho môi trường phát triển + NestJS, MongoDB, Mongoose, React, Vite, Ant Design, Zustand, Axios 1.12, Lucide, Yarn (004-chat-groups)
@@ -16,6 +16,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-05
 - TypeScript 5.x cho backend và frontend; C/GCC cho dịch vụ xử lý từ xa hiện có + NestJS 10, Mongoose 8, React 18, Zustand 5, Axios 1.12, Socket.IO, dịch vụ xử lý từ xa qua TCP đã có sẵn (008-reverse-kernel-encryption)
 - TypeScript 5.x cho frontend và backend; C/GCC cho dịch vụ xử lý SHA1 từ xa hiện có + NestJS 10, Mongoose 8, Passport session, jsonwebtoken, React 18, Zustand 5, Axios 1.12, Ant Design 5, dịch vụ remote processor qua TCP đã có sẵn (009-local-auth)
 - MongoDB cho user/auth attempt/refresh session; cookie HTTP-only cho refresh token; browser storage cho access token runtime (009-local-auth)
+- TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, Socket.IO, React 18, Zustand 5, Axios 1.12, Ant Design 5 (010-message-presence-status)
+- MongoDB cho conversation/participant/message; trạng thái tạm thời typing qua realtime layer; browser runtime state cho chat UI (010-message-presence-status)
 
 - C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
 
@@ -35,7 +37,7 @@ tests/
 C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host: Follow standard conventions
 
 ## Recent Changes
+- 010-message-presence-status: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, Socket.IO, React 18, Zustand 5, Axios 1.12, Ant Design 5
 - 009-local-auth: Added TypeScript 5.x cho frontend và backend; C/GCC cho dịch vụ xử lý SHA1 từ xa hiện có + NestJS 10, Mongoose 8, Passport session, jsonwebtoken, React 18, Zustand 5, Axios 1.12, Ant Design 5, dịch vụ remote processor qua TCP đã có sẵn
 - 008-reverse-kernel-encryption: Added TypeScript 5.x cho backend và frontend; C/GCC cho dịch vụ xử lý từ xa hiện có + NestJS 10, Mongoose 8, React 18, Zustand 5, Axios 1.12, Socket.IO, dịch vụ xử lý từ xa qua TCP đã có sẵn
-- 007-remote-encryption-service: Added C with GCC on Linux for the processing daemon and existing C client/server binaries + POSIX sockets, pthreads, the existing shared protocol structs, the existing device access flow, Linux kernel character device access
 
