@@ -11,6 +11,7 @@ import {
   leaveConversation,
   listConversations,
   mapRealtimeMessage,
+  markConversationRead,
 } from "../../services/chat.service";
 import { chatSocketService } from "../../services/chat-socket.service";
 import type { SearchableUser } from "../../types/auth";
@@ -22,6 +23,7 @@ import type {
   MembershipEvent,
   Message,
   RealtimeMessage,
+  TypingPresenceUpdate,
 } from "../../types/chat";
 import { ChatComposer } from "./components/chat-composer";
 import { ConversationList } from "./components/conversation-list";
@@ -36,6 +38,7 @@ type ChatState = {
   loadingMessages: boolean;
   sendingMessage: boolean;
   hasMoreMessages: boolean;
+  typingByConversationId: Record<string, TypingPresenceUpdate | undefined>;
 };
 
 type ConversationContextMenuState = {
@@ -87,7 +90,7 @@ function updateConversationPreview(
   );
 
   if (!target) {
-    return conversations;
+    return null;
   }
 
   const next = conversations.map((conversation) =>
@@ -96,6 +99,8 @@ function updateConversationPreview(
           ...conversation,
           lastMessagePreview: preview.lastMessagePreview,
           lastMessageAt: preview.lastMessageAt,
+          unreadCount: preview.unreadCount,
+          hasUnread: preview.hasUnread,
         }
       : conversation,
   );
@@ -118,6 +123,7 @@ export function ChatPage() {
     loadingMessages: false,
     sendingMessage: false,
     hasMoreMessages: true,
+    typingByConversationId: {},
   });
   const [inputValue, setInputValue] = useState("");
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
@@ -138,6 +144,8 @@ export function ChatPage() {
   const requestedConversationIdRef = useRef(
     readSelectedConversationIdFromLocation(window.location.search),
   );
+  const conversationsRef = useRef<Conversation[]>([]);
+  const typingTimeoutsRef = useRef<Record<string, number | undefined>>({});
 
   const palette = {
     page: "linear-gradient(180deg, #fbf4ea 0%, #fff8f1 100%)",
@@ -177,6 +185,7 @@ export function ChatPage() {
   const loadConversations = useCallback(async () => {
     try {
       const conversations = await listConversations();
+      conversationsRef.current = conversations;
       setState((prev) => ({
         ...prev,
         conversations,
@@ -204,10 +213,27 @@ export function ChatPage() {
       ]);
       setState((prev) => ({
         ...prev,
-        messages: messages.reverse(),
+        messages,
         membershipEvents,
         loadingMessages: false,
         hasMoreMessages: messages.length >= 10,
+      }));
+
+      const readState =
+        chatSocketService.getConnectionState() === "connected"
+          ? await chatSocketService.markConversationRead(conversationId)
+          : await markConversationRead(conversationId);
+      setState((prev) => ({
+        ...prev,
+        conversations: prev.conversations.map((conversation) =>
+          conversation._id === conversationId
+            ? {
+                ...conversation,
+                unreadCount: readState.unreadCount,
+                hasUnread: readState.unreadCount > 0,
+              }
+            : conversation,
+        ),
       }));
     } catch {
       setState((prev) => ({ ...prev, loadingMessages: false }));
@@ -217,30 +243,157 @@ export function ChatPage() {
   const handleIncomingMessage = useCallback(
     (incomingMessage: RealtimeMessage) => {
       const message = mapRealtimeMessage(incomingMessage);
-      setState((prev) => ({
-        ...prev,
-        messages:
-          prev.selectedConversationId === message.conversationId
-            ? upsertMessage(prev.messages, message)
-            : prev.messages,
-      }));
+      let shouldReloadConversations = false;
+
+      setState((prev) => {
+        const existingConversation = prev.conversations.find(
+          (conversation) => conversation._id === message.conversationId,
+        );
+
+        if (!existingConversation) {
+          shouldReloadConversations = true;
+        }
+
+        const nextConversations = existingConversation
+          ? (updateConversationPreview(prev.conversations, {
+              conversationId: message.conversationId,
+              lastMessagePreview: message.content,
+              lastMessageAt: message.sentAt,
+              unreadCount: existingConversation.unreadCount,
+              hasUnread: existingConversation.hasUnread,
+            }) ?? prev.conversations)
+          : prev.conversations;
+
+        conversationsRef.current = nextConversations;
+
+        return {
+          ...prev,
+          conversations: nextConversations,
+          messages:
+            prev.selectedConversationId === message.conversationId
+              ? upsertMessage(prev.messages, message)
+              : prev.messages,
+        };
+      });
+
+      if (shouldReloadConversations) {
+        void loadConversations();
+      }
 
       if (incomingMessage.senderId === currentUser?.id) {
         setInputValue("");
         setState((prev) => ({ ...prev, sendingMessage: false }));
       }
     },
-    [currentUser?.id],
+    [currentUser?.id, loadConversations],
   );
 
   const handlePreviewUpdate = useCallback(
     (preview: ConversationPreviewUpdate) => {
+      let shouldReloadConversations = false;
+
+      setState((prev) => {
+        const nextConversations = updateConversationPreview(
+          prev.conversations,
+          preview,
+        );
+
+        if (!nextConversations) {
+          shouldReloadConversations = true;
+          return prev;
+        }
+
+        conversationsRef.current = nextConversations;
+
+        return {
+          ...prev,
+          conversations: nextConversations,
+        };
+      });
+
+      if (shouldReloadConversations) {
+        void loadConversations();
+      }
+    },
+    [loadConversations],
+  );
+
+  const handleConversationRead = useCallback(
+    (payload: { conversationId: string }) => {
       setState((prev) => ({
         ...prev,
-        conversations: updateConversationPreview(prev.conversations, preview),
+        conversations: prev.conversations.map((conversation) =>
+          conversation._id === payload.conversationId
+            ? {
+                ...conversation,
+                unreadCount: 0,
+                hasUnread: false,
+              }
+            : conversation,
+        ),
       }));
+
+      if (state.selectedConversationId !== payload.conversationId) {
+        return;
+      }
+
+      void getMessages(payload.conversationId)
+        .then((messages) => {
+          setState((prev) => ({
+            ...prev,
+            messages,
+          }));
+        })
+        .catch(() => undefined);
     },
-    [],
+    [state.selectedConversationId],
+  );
+
+  const handleTypingPresence = useCallback(
+    (payload: TypingPresenceUpdate) => {
+      if (payload.userId === currentUser?.id) {
+        return;
+      }
+
+      const existingTimeout = typingTimeoutsRef.current[payload.conversationId];
+
+      if (existingTimeout) {
+        window.clearTimeout(existingTimeout);
+        typingTimeoutsRef.current[payload.conversationId] = undefined;
+      }
+
+      setState((prev) => ({
+        ...prev,
+        typingByConversationId: {
+          ...prev.typingByConversationId,
+          [payload.conversationId]: payload.isTyping ? payload : undefined,
+        },
+      }));
+
+      if (!payload.isTyping) {
+        return;
+      }
+
+      const expiresAt = payload.expiresAt
+        ? new Date(payload.expiresAt).getTime()
+        : Date.now() + 4000;
+      const timeoutMs = Math.max(expiresAt - Date.now(), 0);
+
+      typingTimeoutsRef.current[payload.conversationId] = window.setTimeout(
+        () => {
+          setState((prev) => ({
+            ...prev,
+            typingByConversationId: {
+              ...prev.typingByConversationId,
+              [payload.conversationId]: undefined,
+            },
+          }));
+          typingTimeoutsRef.current[payload.conversationId] = undefined;
+        },
+        timeoutMs,
+      );
+    },
+    [currentUser?.id],
   );
 
   const handleSocketError = useCallback((_error: ChatSocketError) => {
@@ -252,7 +405,10 @@ export function ChatPage() {
   }, [loadConversations]);
 
   useEffect(() => {
-    if (state.loadingConversations || hasRestoredConversationFromUrlRef.current) {
+    if (
+      state.loadingConversations ||
+      hasRestoredConversationFromUrlRef.current
+    ) {
       return;
     }
 
@@ -311,19 +467,25 @@ export function ChatPage() {
       handleIncomingMessage,
     );
     const unsubscribePreview = chatSocketService.onPreview(handlePreviewUpdate);
+    const unsubscribeRead = chatSocketService.onRead(handleConversationRead);
+    const unsubscribeTyping = chatSocketService.onTyping(handleTypingPresence);
     const unsubscribeError = chatSocketService.onError(handleSocketError);
 
     return () => {
       unsubscribeConnection();
       unsubscribeMessage();
       unsubscribePreview();
+      unsubscribeRead();
+      unsubscribeTyping();
       unsubscribeError();
       chatSocketService.disconnect();
     };
   }, [
+    handleConversationRead,
     handleIncomingMessage,
     handlePreviewUpdate,
     handleSocketError,
+    handleTypingPresence,
     isAuthenticated,
   ]);
 
@@ -400,6 +562,16 @@ export function ChatPage() {
     return () => window.removeEventListener("click", handleWindowClick);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      for (const timeoutId of Object.values(typingTimeoutsRef.current)) {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+      }
+    };
+  }, []);
+
   const loadMoreMessages = useCallback(async () => {
     if (
       !state.selectedConversationId ||
@@ -418,7 +590,7 @@ export function ChatPage() {
       });
       setState((prev) => ({
         ...prev,
-        messages: [...olderMessages.reverse(), ...prev.messages],
+        messages: [...olderMessages, ...prev.messages],
         loadingMessages: false,
         hasMoreMessages: olderMessages.length >= 10,
       }));
@@ -463,6 +635,10 @@ export function ChatPage() {
       await chatSocketService.sendMessage(
         state.selectedConversationId,
         inputValue.trim(),
+      );
+      await chatSocketService.updateTypingPresence(
+        state.selectedConversationId,
+        false,
       );
     } catch {
       setState((prev) => ({ ...prev, sendingMessage: false }));
@@ -571,20 +747,34 @@ export function ChatPage() {
     selectedConversation?.displayTitle ||
     selectedConversation?.title ||
     "Chọn một đoạn chat";
-  const headerSubtitle = inputValue.trim()
-    ? "Đang soạn tin..."
-    : selectedConversation?.directPeer?.email ?? "";
+  const activeTypingPresence = state.selectedConversationId
+    ? state.typingByConversationId[state.selectedConversationId]
+    : undefined;
+  const headerSubtitle = selectedConversation?.directPeer?.email ?? "";
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: palette.page,
-        color: palette.text,
-        display: "grid",
-        placeItems: "center",
-      }}
-    >
+    <>
+      <style>{`
+        @keyframes chatTypingDotBounce {
+          0%, 80%, 100% {
+            opacity: 0.35;
+            transform: translateY(0);
+          }
+          40% {
+            opacity: 1;
+            transform: translateY(-3px);
+          }
+        }
+      `}</style>
+      <div
+        style={{
+          minHeight: "100vh",
+          background: palette.page,
+          color: palette.text,
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
       <div style={{ width: "100%", paddingInline: 24 }}>
         <main style={styles.workspaceSimple}>
           <aside style={{ ...styles.sidebarSimple, ...styles.glass(palette) }}>
@@ -672,7 +862,7 @@ export function ChatPage() {
                     </Typography.Title>
                     {headerSubtitle ? (
                       <Typography.Text
-                        style={{ color: palette.textMuted, fontSize: 13 }}
+                        style={{ color: palette.textMuted, fontSize: 13 } as never}
                       >
                         {headerSubtitle}
                       </Typography.Text>
@@ -692,7 +882,6 @@ export function ChatPage() {
                   />
                 </div>
               </header>
-
             </div>
 
             {selectedConversation ? (
@@ -706,30 +895,63 @@ export function ChatPage() {
                   {state.loadingMessages && combinedTimeline.length === 0 ? (
                     <Spin />
                   ) : (
-                    combinedTimeline.map((item, index) =>
-                      item.kind === "event" ? (
-                        <EventBubble key={`event-${index}`} event={item.event} />
-                      ) : (
-                        <MessageBubble
-                          key={item.message._id}
-                          message={item.message}
-                          isMine={item.message.senderId === currentUser?.id}
-                          authorName={
-                            item.message.senderId === currentUser?.id
-                              ? (currentUser?.displayName ?? "Bạn")
-                              : (selectedConversation.directPeer?.displayName ??
-                                selectedConversation.displayTitle ??
-                                "Người dùng")
-                          }
-                        />
-                      ),
-                    )
+                    <>
+                      {combinedTimeline.map((item, index) =>
+                        item.kind === "event" ? (
+                          <EventBubble
+                            key={`event-${index}`}
+                            event={item.event}
+                          />
+                        ) : (
+                          <MessageBubble
+                            key={item.message._id}
+                            message={item.message}
+                            isMine={item.message.senderId === currentUser?.id}
+                            authorName={
+                              item.message.senderId === currentUser?.id
+                                ? (currentUser?.displayName ?? "Bạn")
+                                : (selectedConversation.directPeer?.displayName ??
+                                  selectedConversation.displayTitle ??
+                                  "Người dùng")
+                            }
+                          />
+                        ),
+                      )}
+                      {activeTypingPresence?.isTyping ? (
+                        <div style={styles.typingIndicatorRow}>
+                          <Avatar size={28} style={styles.typingIndicatorAvatar}>
+                            {(selectedConversation.directPeer?.displayName ?? "N").charAt(0).toUpperCase()}
+                          </Avatar>
+                          <div style={styles.typingIndicatorBubble}>
+                            <span style={styles.typingDots}>
+                              <span style={{ ...styles.typingDot, animationDelay: "0ms" }} />
+                              <span style={{ ...styles.typingDot, animationDelay: "180ms" }} />
+                              <span style={{ ...styles.typingDot, animationDelay: "360ms" }} />
+                            </span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
                   )}
                 </div>
 
                 <ChatComposer
                   value={inputValue}
-                  onChange={setInputValue}
+                  onChange={(value) => {
+                    setInputValue(value);
+
+                    if (
+                      !state.selectedConversationId ||
+                      connectionState !== "connected"
+                    ) {
+                      return;
+                    }
+
+                    void chatSocketService.updateTypingPresence(
+                      state.selectedConversationId,
+                      value.trim().length > 0,
+                    );
+                  }}
                   onSend={handleSend}
                   onLeave={handleLeave}
                   loading={state.sendingMessage}
@@ -739,7 +961,10 @@ export function ChatPage() {
               </>
             ) : (
               <div style={styles.emptyChatState}>
-                <Typography.Title level={3} style={styles.emptyChatTitle as never}>
+                <Typography.Title
+                  level={3}
+                  style={styles.emptyChatTitle as never}
+                >
                   Chọn một đoạn chat
                 </Typography.Title>
                 <Typography.Text style={styles.emptyChatDescription as never}>
@@ -850,6 +1075,7 @@ export function ChatPage() {
         </Modal>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1074,5 +1300,38 @@ const styles = {
     padding: "10px 12px",
     borderRadius: 10,
     cursor: "pointer",
+  } satisfies React.CSSProperties,
+  typingIndicatorRow: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 8,
+    maxWidth: "78%",
+  } satisfies React.CSSProperties,
+  typingIndicatorAvatar: {
+    background: "#ffffff",
+    color: "#9b2f00",
+    fontWeight: 700,
+  } satisfies React.CSSProperties,
+  typingIndicatorBubble: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 44,
+    padding: "0 14px",
+    borderRadius: 18,
+    background: "#ffe2db",
+    color: "#8d7168",
+  } satisfies React.CSSProperties,
+  typingDots: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+  } satisfies React.CSSProperties,
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "999px",
+    background: "currentColor",
+    opacity: 0.35,
+    animation: "chatTypingDotBounce 1.1s infinite ease-in-out",
   } satisfies React.CSSProperties,
 };

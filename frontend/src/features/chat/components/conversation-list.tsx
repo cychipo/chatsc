@@ -56,6 +56,7 @@ export function ConversationList({ conversations, selectedId, onSelect, onContex
           ? `Chào ${title} ngay`
           : 'Bắt đầu cuộc trò chuyện ngay')
         const time = formatConversationTime(conversation.lastMessageAt)
+        const unreadCount = conversation.unreadCount ?? 0
 
         return (
           <button
@@ -72,7 +73,10 @@ export function ConversationList({ conversations, selectedId, onSelect, onContex
             <div style={styles.itemMain}>
               <div style={styles.nameRow}>
                 <Typography.Text style={styles.nameText as never}>{title}</Typography.Text>
-                {time ? <span style={styles.timeText}>{time}</span> : null}
+                <div style={styles.metaRight}>
+                  {time ? <span style={styles.timeText}>{time}</span> : null}
+                  {unreadCount > 0 ? <span style={styles.unreadBadge}>{unreadCount}</span> : null}
+                </div>
               </div>
               <Typography.Paragraph ellipsis={{ rows: 2 }} style={styles.previewText as never}>
                 {preview}
@@ -118,6 +122,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     alignItems: 'center',
   },
+  metaRight: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
   nameText: {
     fontSize: 13,
     fontWeight: 700,
@@ -128,6 +138,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: '#8d7168',
     fontWeight: 600,
+  },
+  unreadBadge: {
+    minWidth: 18,
+    height: 18,
+    padding: '0 6px',
+    borderRadius: 999,
+    display: 'inline-grid',
+    placeItems: 'center',
+    background: '#c2410c',
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 700,
   },
   previewText: {
     margin: 0,

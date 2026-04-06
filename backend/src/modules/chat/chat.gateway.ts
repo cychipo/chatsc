@@ -10,7 +10,12 @@ import {
 } from '@nestjs/websockets'
 import { AuthService } from '../auth/auth.service'
 import { SessionUser } from '../auth/types/auth-session'
-import { ChatService, ConversationPreviewPayload, RealtimeMessagePayload } from './chat.service'
+import {
+  ChatService,
+  ConversationPreviewPayload,
+  MarkConversationReadPayload,
+  RealtimeMessagePayload,
+} from './chat.service'
 import { authenticateSocketClient } from './utils/socket-auth.util'
 import {
   getConversationRoom,
@@ -44,6 +49,15 @@ type LeaveConversationPayload = {
 type SendMessagePayload = {
   conversationId: string
   content: string
+}
+
+type MarkConversationReadSocketPayload = {
+  conversationId: string
+}
+
+type TypingPayload = {
+  conversationId: string
+  isTyping: boolean
 }
 
 type SocketAck<T> =
@@ -138,23 +152,85 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     try {
       const content = payload.content.trim()
-      const message = await this.chatService.sendRealtimeMessage(payload.conversationId, user.id, content)
-      const preview = await this.chatService.buildConversationPreviewPayload(payload.conversationId)
-      await this.emitConversationPreview(payload.conversationId, preview)
-      this.server.to(getConversationRoom(payload.conversationId)).emit('message_delivered', message)
-      return { success: true, data: message }
+      const result = await this.chatService.sendRealtimeMessage(payload.conversationId, user.id, content)
+      await this.emitConversationPreviews(result.previewByUserId)
+      await this.emitRealtimeMessage(payload.conversationId, result.previewByUserId.map((entry) => entry.userId), result.message)
+      return { success: true, data: result.message }
     } catch (error) {
       return this.toErrorAck(error, payload.conversationId)
     }
   }
 
-  private async emitConversationPreview(conversationId: string, preview: ConversationPreviewPayload) {
-    const participants = await this.chatService.getActiveParticipants(conversationId)
+  @SubscribeMessage('mark_conversation_read')
+  async handleMarkConversationRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: MarkConversationReadSocketPayload,
+  ): Promise<SocketAck<MarkConversationReadPayload>> {
+    const user = this.getClientUser(client)
 
-    for (const participant of participants) {
+    try {
+      const result = await this.chatService.markConversationRead(payload.conversationId, user.id)
+      const previews = await this.chatService.buildConversationPreviewPayloads(payload.conversationId)
+      await this.emitConversationPreviews(previews)
       this.server
-        .to(getUserRoom(participant.userId.toString()))
-        .emit('conversation_preview_updated', preview)
+        .to(getUserRoom(user.id))
+        .emit('conversation_read_updated', result)
+      this.server
+        .to(getConversationRoom(payload.conversationId))
+        .emit('conversation_read_updated', result)
+      return { success: true, data: result }
+    } catch (error) {
+      return this.toErrorAck(error, payload.conversationId)
+    }
+  }
+
+  @SubscribeMessage('typing_presence_updated')
+  async handleTypingPresence(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: TypingPayload,
+  ): Promise<SocketAck<{ conversationId: string; isTyping: boolean }>> {
+    const user = this.getClientUser(client)
+
+    try {
+      await this.chatService.getRequiredActiveParticipant(payload.conversationId, user.id)
+      client.to(getConversationRoom(payload.conversationId)).emit('typing_presence_updated', {
+        conversationId: payload.conversationId,
+        userId: user.id,
+        isTyping: payload.isTyping,
+        expiresAt: new Date(Date.now() + 4000).toISOString(),
+      })
+
+      return {
+        success: true,
+        data: {
+          conversationId: payload.conversationId,
+          isTyping: payload.isTyping,
+        },
+      }
+    } catch (error) {
+      return this.toErrorAck(error, payload.conversationId)
+    }
+  }
+
+  private async emitConversationPreviews(entries: Array<{ userId: string; preview: ConversationPreviewPayload }>) {
+    for (const entry of entries) {
+      this.server
+        .to(getUserRoom(entry.userId))
+        .emit('conversation_preview_updated', entry.preview)
+    }
+  }
+
+  private async emitRealtimeMessage(
+    conversationId: string,
+    participantUserIds: string[],
+    message: RealtimeMessagePayload,
+  ) {
+    this.server.to(getConversationRoom(conversationId)).emit('message_delivered', message)
+
+    for (const userId of participantUserIds) {
+      this.server
+        .to(getUserRoom(userId))
+        .emit('message_delivered', message)
     }
   }
 

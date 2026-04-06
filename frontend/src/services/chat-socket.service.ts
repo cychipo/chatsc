@@ -3,7 +3,9 @@ import {
   ChatConnectionState,
   ChatSocketError,
   ConversationPreviewUpdate,
+  MarkConversationReadResponse,
   RealtimeMessage,
+  TypingPresenceUpdate,
 } from '../types/chat'
 import { getAccessToken } from './http'
 
@@ -25,6 +27,10 @@ type PreviewListener = (preview: ConversationPreviewUpdate) => void
 
 type ConnectionListener = (state: ChatConnectionState) => void
 
+type ReadListener = (payload: MarkConversationReadResponse) => void
+
+type TypingListener = (payload: TypingPresenceUpdate) => void
+
 type ErrorListener = (error: ChatSocketError) => void
 
 function resolveSocketUrl() {
@@ -45,6 +51,8 @@ class ChatSocketService {
   private messageListeners = new Set<MessageListener>()
   private previewListeners = new Set<PreviewListener>()
   private connectionListeners = new Set<ConnectionListener>()
+  private readListeners = new Set<ReadListener>()
+  private typingListeners = new Set<TypingListener>()
   private errorListeners = new Set<ErrorListener>()
 
   connect() {
@@ -100,6 +108,18 @@ class ChatSocketService {
       }
     })
 
+    this.socket.on('conversation_read_updated', (payload: MarkConversationReadResponse) => {
+      for (const listener of this.readListeners) {
+        listener(payload)
+      }
+    })
+
+    this.socket.on('typing_presence_updated', (payload: TypingPresenceUpdate) => {
+      for (const listener of this.typingListeners) {
+        listener(payload)
+      }
+    })
+
     this.socket.on('connection_status_changed', (payload: { state?: ChatConnectionState }) => {
       if (payload.state) {
         this.setConnectionState(payload.state)
@@ -138,6 +158,16 @@ class ChatSocketService {
     return () => this.connectionListeners.delete(listener)
   }
 
+  onRead(listener: ReadListener) {
+    this.readListeners.add(listener)
+    return () => this.readListeners.delete(listener)
+  }
+
+  onTyping(listener: TypingListener) {
+    this.typingListeners.add(listener)
+    return () => this.typingListeners.delete(listener)
+  }
+
   onError(listener: ErrorListener) {
     this.errorListeners.add(listener)
     return () => this.errorListeners.delete(listener)
@@ -163,6 +193,19 @@ class ChatSocketService {
     return this.emitWithAck<RealtimeMessage>('send_message', {
       conversationId,
       content,
+    })
+  }
+
+  async markConversationRead(conversationId: string) {
+    return this.emitWithAck<MarkConversationReadResponse>('mark_conversation_read', {
+      conversationId,
+    })
+  }
+
+  async updateTypingPresence(conversationId: string, isTyping: boolean) {
+    return this.emitWithAck<{ conversationId: string; isTyping: boolean }>('typing_presence_updated', {
+      conversationId,
+      isTyping,
     })
   }
 

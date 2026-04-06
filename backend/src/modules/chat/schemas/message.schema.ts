@@ -4,6 +4,7 @@ import { HydratedDocument, Types } from 'mongoose'
 export type MessageDocument = HydratedDocument<Message>
 
 export type DeliveryStatus = 'sent' | 'failed'
+export type SeenState = 'sent' | 'seen'
 export type ReverseEncryptionState = 'legacy' | 'encrypted' | 'decode_failed'
 
 @Schema({ timestamps: true })
@@ -28,6 +29,9 @@ export class Message {
 
   @Prop({ required: true, enum: ['sent', 'failed'], default: 'sent' })
   deliveryStatus!: DeliveryStatus
+
+  @Prop({ required: true, enum: ['sent', 'seen'], default: 'sent' })
+  seenState!: SeenState
 
   @Prop()
   decodeErrorCode?: string

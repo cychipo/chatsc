@@ -15,3 +15,7 @@ export class GetMessagesQueryDto {
 
   limit?: number
 }
+
+export class MarkConversationReadDto {
+  conversationId!: string
+}
