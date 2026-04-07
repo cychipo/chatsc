@@ -16,6 +16,7 @@
 - `mongo-express` — không cần thiết, tăng attack surface
 
 **Data persistence**: Named volume `mongo-data` mount vào `/data/db` và `/data/configdb`.
+**Auth & public TCP access**: MongoDB khởi tạo bằng `MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD`, public qua TCP port `5635:27017`, và được reconcile bởi `mongo-bootstrap` để đảm bảo root user từ env tồn tại cả trên volume cũ.
 
 ---
 
@@ -134,7 +135,7 @@ services:
 ```
 
 **Key decisions**:
-- `depends_on` với `condition: service_healthy` — backend không start cho đến khi MongoDB thực sự sẵn sàng nhận kết nối (khắc phục edge case "backend khởi động trước database")
+- `depends_on` với `mongo-bootstrap: service_completed_successfully` — backend không start cho đến khi MongoDB sẵn sàng và root user từ env đã được create/update xong
 - Healthcheck dùng `wget --spider` thay vì `curl` — có sẵn trong alpine image
 - Named volume `mongo-data` — đảm bảo data tồn tại qua các lần restart/redeploy
 - `restart: unless-stopped` — tự động restart khi VPS reboot
@@ -155,7 +156,7 @@ docker-compose sẽ fail nếu port 5634 hoặc 5734 đã bị chiếm. `docker-
 
 | Variable | Required | Description |
 |---|---|---|
-| `MONGODB_URI` | Auto | Set by docker-compose: `mongodb://mongo:27017/chatsc` |
+| `MONGODB_URI` | Auto | Set by docker-compose: `mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/chatsc?authSource=admin` |
 | `PORT` | Auto | Fixed: `5634` |
 | `SESSION_SECRET` | **YES** | Secret cho express-session |
 | `ACCESS_TOKEN_SECRET` | **YES** | JWT access token signing key |
@@ -164,7 +165,7 @@ docker-compose sẽ fail nếu port 5634 hoặc 5734 đã bị chiếm. `docker-
 | `GOOGLE_CLIENT_SECRET` | **YES** | Google OAuth client secret |
 | `GOOGLE_CALLBACK_URL` | **YES** | Google OAuth callback URL |
 | `REFRESH_COOKIE_NAME` | No | Default: `refresh_token` |
-| `FRONTEND_APP_URL` | Auto | Set by docker-compose: `http://localhost:5734` |
+| `FRONTEND_APP_URL` | Auto | Set by docker-compose: `https://chatsc.fayedark.com` |
 | `API_PREFIX` | No | Default: `api` |
 | `AUTH_LOCAL_ENABLED` | No | Default: `false` |
 | `CHAT_REVERSE_ENCRYPTION_ENABLED` | No | Default: `false` |
@@ -176,7 +177,7 @@ docker-compose sẽ fail nếu port 5634 hoặc 5734 đã bị chiếm. `docker-
 
 | Variable | Required | Description |
 |---|---|---|
-| `VITE_API_BASE_URL` | **YES** | Backend URL (build-time) — set to `http://localhost:5634/api` |
+| `VITE_API_BASE_URL` | **YES** | Production frontend API base path — set to `/api` so nginx can proxy to backend container |
 
 ---
 
@@ -193,7 +194,9 @@ ACCESS_TOKEN_SECRET=replace-with-a-long-random-string
 REFRESH_TOKEN_SECRET=replace-with-a-long-random-string
 GOOGLE_CLIENT_ID=replace-with-google-client-id
 GOOGLE_CLIENT_SECRET=replace-with-google-client-secret
-GOOGLE_CALLBACK_URL=http://localhost:5634/api/auth/google/callback
+GOOGLE_CALLBACK_URL=https://chatsc.fayedark.com/api/auth/google/callback
+MONGO_USERNAME=replace-with-mongo-username
+MONGO_PASSWORD=replace-with-mongo-password
 
 # ======================
 # Optional (defaults work for basic deploy)
@@ -238,7 +241,17 @@ services:
 
 ---
 
-## 8. Restart & Recovery
+## 8. Reverse Proxy Strategy
+
+- Frontend browser requests go to same-origin `/api/*`
+- `nginx` in `deploy/nginx.conf` proxies `/api/` → `http://backend:5634/api/`
+- `nginx` proxies websocket `/chat` → `http://backend:5634/chat`
+- `mongo-bootstrap` runs as one-shot reconcile step before backend starts
+- Backend container stays internal-only; MongoDB remains publicly reachable on TCP `5635`
+
+---
+
+## 9. Restart & Recovery
 
 - **`restart: unless-stopped`** trên tất cả services — tự động lên khi VPS reboot
 - **`docker-compose down`** — hạ toàn bộ stack
@@ -249,7 +262,7 @@ services:
 
 ---
 
-## 9. VPS Prerequisites (Documented in quickstart.md)
+## 10. VPS Prerequisites (Documented in quickstart.md)
 
 1. Docker Engine 24.0+
 2. Docker Compose Plugin v2.20+

@@ -28,9 +28,9 @@ docker compose version
 # 3. Git
 git --version
 
-# 4. Ports 5634 và 5734 available
+# 4. Ports 5635 và 5734 available
 # Kiểm tra: không có process nào đang listen trên 2 port này
-ss -tlnp | grep -E '5634|5734'
+ss -tlnp | grep -E '5635|5734'
 ```
 
 ### Cài đặt Docker (nếu chưa có)
@@ -73,7 +73,9 @@ ACCESS_TOKEN_SECRET=your-long-random-access-token-secret-here
 REFRESH_TOKEN_SECRET=your-long-random-refresh-token-secret-here
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_CALLBACK_URL=http://localhost:5634/api/auth/google/callback
+GOOGLE_CALLBACK_URL=https://chatsc.fayedark.com/api/auth/google/callback
+MONGO_USERNAME=your-mongo-username
+MONGO_PASSWORD=your-mongo-password
 ```
 
 **Cách tạo secret ngẫu nhiên:**
@@ -92,8 +94,9 @@ Docker sẽ:
 2. Build frontend Docker image (lần đầu, ~1-3 phút)
 3. Pull MongoDB image
 4. Start MongoDB, chờ healthcheck pass
-5. Start Backend, chờ healthcheck pass
-6. Start Frontend
+5. Run `mongo-bootstrap` để create/update root user theo env nếu cần
+6. Start Backend, chờ healthcheck pass
+7. Start Frontend
 
 ### Bước 5: Kiểm tra Trạng thái
 
@@ -104,19 +107,22 @@ docker compose -f deploy/docker-compose.yml ps
 Expected output:
 ```
 NAME       IMAGE       COMMAND                  SERVICE   CREATED   STATUS                    PORTS
-mongo      mongo:7     "docker-entrypoint.s…"   mongo     ...       Up (healthy)              27017/tcp
-backend    deploy-b…   "node dist/main.js"      backend   ...       Up (healthy)              0.0.0.0:5634->5634/tcp
+mongo      mongo:7     "docker-entrypoint.s…"   mongo     ...       Up (healthy)              0.0.0.0:5635->27017/tcp
+backend    deploy-b…   "node backend/dist/src/main.js" backend ...       Up (healthy)              
 frontend   deploy-f…   "/docker-entrypoint.…"   frontend  ...       Up                         0.0.0.0:5734->5734/tcp
 ```
 
 ### Bước 6: Verify Services
 
 ```bash
-# Backend healthcheck
-curl http://localhost:5634/api/health
-
 # Frontend
 curl http://localhost:5734
+
+# Backend healthcheck qua nginx proxy
+curl http://localhost:5734/api/health
+
+# MongoDB TCP port public
+mongosh "mongodb://<MONGO_USERNAME>:<MONGO_PASSWORD>@localhost:5635/chatsc?authSource=admin"
 ```
 
 ---
@@ -188,7 +194,7 @@ docker compose -f deploy/docker-compose.yml logs
 
 ```bash
 # Tìm process chiếm port
-ss -tlnp | grep 5634
+ss -tlnp | grep 5635
 ss -tlnp | grep 5734
 
 # Kill process hoặc thay đổi port trong docker-compose.yml
@@ -198,7 +204,7 @@ ss -tlnp | grep 5734
 
 ```bash
 # Kiểm tra MongoDB có healthy không
-docker compose -f deploy/docker-compose.yml exec mongo mongosh --eval "db.adminCommand('ping')"
+docker compose -f deploy/docker-compose.yml exec mongo mongosh "mongodb://$MONGO_USERNAME:$MONGO_PASSWORD@localhost:27017/admin?authSource=admin" --eval "db.adminCommand('ping')"
 
 # Kiểm tra backend logs
 docker compose -f deploy/docker-compose.yml logs backend
@@ -208,11 +214,17 @@ docker compose -f deploy/docker-compose.yml logs backend
 
 ### Database connection errors:
 
-Backend sẽ không start nếu MongoDB chưa healthy. Chờ thêm 10-30 giây hoặc:
+Backend sẽ không start nếu `mongo-bootstrap` chưa reconcile xong root user hoặc MongoDB chưa healthy.
 
 ```bash
-# Restart backend sau khi mongo healthy
-docker compose -f deploy/docker-compose.yml restart backend
+# Kiểm tra bootstrap logs
+docker compose -f deploy/docker-compose.yml logs mongo-bootstrap
+
+# Kiểm tra mongo auth trực tiếp
+docker compose -f deploy/docker-compose.yml exec mongo mongosh "mongodb://$MONGO_USERNAME:$MONGO_PASSWORD@localhost:27017/admin?authSource=admin" --eval "db.adminCommand('ping')"
+
+# Chạy lại bootstrap nếu cần
+docker compose -f deploy/docker-compose.yml up mongo-bootstrap
 ```
 
 ### Xem resource usage:
@@ -235,6 +247,8 @@ docker compose -f deploy/docker-compose.yml top
 | `GOOGLE_CLIENT_ID` | **YES** | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | **YES** | Google OAuth client secret |
 | `GOOGLE_CALLBACK_URL` | **YES** | Callback URL cho Google OAuth |
+| `MONGO_USERNAME` | **YES** | MongoDB root username |
+| `MONGO_PASSWORD` | **YES** | MongoDB root password |
 | `REFRESH_COOKIE_NAME` | No | Default: `refresh_token` |
 | `API_PREFIX` | No | Default: `api` |
 | `AUTH_LOCAL_ENABLED` | No | Default: `false` |
@@ -249,15 +263,15 @@ docker compose -f deploy/docker-compose.yml top
 
 | Variable | Value |
 |---|---|
-| `MONGODB_URI` | `mongodb://mongo:27017/chatsc` |
+| `MONGODB_URI` | `mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/chatsc?authSource=admin` |
 | `PORT` | `5634` |
-| `FRONTEND_APP_URL` | `http://localhost:5734` |
+| `FRONTEND_APP_URL` | `https://chatsc.fayedark.com` |
 
 ### Frontend Build-time
 
 | Variable | Value |
 |---|---|
-| `VITE_API_BASE_URL` | `http://localhost:5634/api` (default) |
+| `VITE_API_BASE_URL` | `/api` (default production path via nginx proxy) |
 
 ---
 
@@ -265,9 +279,11 @@ docker compose -f deploy/docker-compose.yml top
 
 | Service | Internal Port | Host Port | Protocol |
 |---|---|---|---|
-| MongoDB | 27017 | (none — internal) | TCP |
-| Backend | 5634 | **5634** | HTTP |
-| Frontend | 80 | **5734** | HTTP |
+| MongoDB | 27017 | **5635** | TCP |
+| Mongo bootstrap | n/a | (none) | one-shot internal job |
+| Backend | 5634 | (none — internal only) | HTTP |
+| Frontend | 5734 | **5734** | HTTP |
 
-Truy cập từ browser: `http://<vps-ip>:5734`
-Backend API: `http://<vps-ip>:5634/api`
+Truy cập từ browser: `https://chatsc.fayedark.com` hoặc `http://<vps-ip>:5734`
+Backend API từ browser: same-origin `/api`
+MongoDB TCP: `<vps-ip>:5635`
