@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, Button, Input, Modal, Spin, Typography } from "antd";
-import { Search, Ellipsis, LogOut, Menu, Plus } from "lucide-react";
+import { Search, Ellipsis, LogOut, Plus } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { searchUsers } from "../../services/auth.service";
 import {
@@ -12,6 +12,7 @@ import {
   listConversations,
   mapRealtimeMessage,
   markConversationRead,
+  searchMessages,
 } from "../../services/chat.service";
 import { chatSocketService } from "../../services/chat-socket.service";
 import type { SearchableUser } from "../../types/auth";
@@ -22,6 +23,7 @@ import type {
   ConversationPreviewUpdate,
   MembershipEvent,
   Message,
+  MessageSearchResult,
   RealtimeMessage,
   TypingPresenceUpdate,
 } from "../../types/chat";
@@ -134,6 +136,14 @@ export function ChatPage() {
   const [selectedUser, setSelectedUser] = useState<SearchableUser | null>(null);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [startingConversation, setStartingConversation] = useState(false);
+  const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+  const [messageSearchQuery, setMessageSearchQuery] = useState("");
+  const [messageSearchResults, setMessageSearchResults] = useState<
+    MessageSearchResult[]
+  >([]);
+  const [searchingMessages, setSearchingMessages] = useState(false);
+  const [messageSearchError, setMessageSearchError] = useState<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] =
     useState<ConversationContextMenuState | null>(null);
   const [connectionState, setConnectionState] =
@@ -194,6 +204,15 @@ export function ChatPage() {
     } catch {
       setState((prev) => ({ ...prev, loadingConversations: false }));
     }
+  }, []);
+
+  const resetMessageSearch = useCallback(() => {
+    setIsMessageSearchOpen(false);
+    setMessageSearchQuery("");
+    setMessageSearchResults([]);
+    setSearchingMessages(false);
+    setMessageSearchError(null);
+    setHighlightedMessageId(null);
   }, []);
 
   const selectConversation = useCallback(async (conversationId: string) => {
@@ -556,6 +575,51 @@ export function ChatPage() {
   }, [isNewChatModalOpen, userSearchQuery]);
 
   useEffect(() => {
+    if (!isMessageSearchOpen || !state.selectedConversationId) {
+      setSearchingMessages(false);
+      setMessageSearchResults([]);
+      setMessageSearchError(null);
+      return;
+    }
+
+    const trimmedQuery = messageSearchQuery.trim();
+
+    if (trimmedQuery.length < 2) {
+      setSearchingMessages(false);
+      setMessageSearchResults([]);
+      setMessageSearchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchingMessages(true);
+    setMessageSearchError(null);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await searchMessages(state.selectedConversationId!, trimmedQuery);
+        if (!cancelled) {
+          setMessageSearchResults(results);
+        }
+      } catch {
+        if (!cancelled) {
+          setMessageSearchResults([]);
+          setMessageSearchError("Không thể tìm kiếm tin nhắn lúc này.");
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchingMessages(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isMessageSearchOpen, messageSearchQuery, state.selectedConversationId]);
+
+  useEffect(() => {
     const handleWindowClick = () => setContextMenu(null);
 
     window.addEventListener("click", handleWindowClick);
@@ -661,6 +725,40 @@ export function ChatPage() {
     } catch {
       return;
     }
+  };
+
+  const handleOpenMessageSearch = () => {
+    if (!state.selectedConversationId) {
+      setMessageSearchError("Hãy mở một đoạn chat trước khi tìm kiếm tin nhắn.");
+      setMessageSearchResults([]);
+      setIsMessageSearchOpen(true);
+      return;
+    }
+
+    setMessageSearchError(null);
+    setMessageSearchResults([]);
+    setMessageSearchQuery("");
+    setIsMessageSearchOpen(true);
+  };
+
+  const handleOpenSearchResult = async (message: MessageSearchResult) => {
+    if (state.selectedConversationId !== message.conversationId) {
+      await selectConversation(message.conversationId);
+    }
+
+    resetMessageSearch();
+    setHighlightedMessageId(message.messageId);
+
+    window.setTimeout(() => {
+      const target = document.getElementById(`message-${message.messageId}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+
+    window.setTimeout(() => {
+      setHighlightedMessageId((current) => (
+        current === message.messageId ? null : current
+      ));
+    }, 2200);
   };
 
   const handleConversationContextMenu = (
@@ -776,8 +874,15 @@ export function ChatPage() {
         }}
       >
       <div style={{ width: "100%", paddingInline: 24 }}>
-        <main style={styles.workspaceSimple}>
-          <aside style={{ ...styles.sidebarSimple, ...styles.glass(palette) }}>
+        <main
+          style={styles.workspaceSimple}
+        >
+          <aside
+            style={{
+              ...styles.sidebarSimple,
+              ...styles.glass(palette),
+            }}
+          >
             <div style={styles.profileBlock}>
               <Avatar
                 size={48}
@@ -807,7 +912,7 @@ export function ChatPage() {
               Tin nhắn mới
             </Button>
 
-            <div style={styles.sidebarSection}>
+            <div style={styles.sidebarSection} data-testid="conversation-list">
               <Typography.Text style={styles.sidebarLabel as never}>
                 Đoạn chat gần đây
               </Typography.Text>
@@ -841,11 +946,6 @@ export function ChatPage() {
             <div style={styles.chatTopStack}>
               <header style={styles.chatHeaderSimple}>
                 <div style={styles.chatHeaderLeftSimple}>
-                  <Button
-                    type="text"
-                    shape="circle"
-                    icon={<Menu size={18} />}
-                  />
                   <Avatar size={42} style={styles.chatHeaderAvatar}>
                     {headerTitle.charAt(0).toUpperCase()}
                   </Avatar>
@@ -874,6 +974,7 @@ export function ChatPage() {
                     type="text"
                     shape="circle"
                     icon={<Search size={16} />}
+                    onClick={handleOpenMessageSearch}
                   />
                   <Button
                     type="text"
@@ -884,13 +985,14 @@ export function ChatPage() {
               </header>
             </div>
 
-            {selectedConversation ? (
-              <>
-                <div
-                  ref={messageThreadRef}
-                  onScroll={handleScroll}
-                  style={styles.messageStreamSimple}
-                >
+            <div
+              ref={messageThreadRef}
+              onScroll={handleScroll}
+              style={styles.messageStreamSimple}
+              data-testid="message-thread"
+            >
+              {selectedConversation ? (
+                <>
                   <div style={styles.dayBadge}>Hôm nay</div>
                   {state.loadingMessages && combinedTimeline.length === 0 ? (
                     <Spin />
@@ -905,14 +1007,24 @@ export function ChatPage() {
                         ) : (
                           <MessageBubble
                             key={item.message._id}
+                            anchorId={`message-${item.message._id}`}
+                            highlighted={highlightedMessageId === item.message._id}
                             message={item.message}
                             isMine={item.message.senderId === currentUser?.id}
                             authorName={
                               item.message.senderId === currentUser?.id
-                                ? (currentUser?.displayName ?? "Bạn")
-                                : (selectedConversation.directPeer?.displayName ??
+                                ? (item.message.senderDisplayName ??
+                                  currentUser?.displayName ??
+                                  "Bạn")
+                                : (item.message.senderDisplayName ??
+                                  selectedConversation.directPeer?.displayName ??
                                   selectedConversation.displayTitle ??
                                   "Người dùng")
+                            }
+                            authorAvatarUrl={
+                              item.message.senderId === currentUser?.id
+                                ? (item.message.senderAvatarUrl ?? currentUser?.avatarUrl)
+                                : item.message.senderAvatarUrl
                             }
                           />
                         ),
@@ -933,45 +1045,45 @@ export function ChatPage() {
                       ) : null}
                     </>
                   )}
+                </>
+              ) : (
+                <div style={styles.emptyChatState}>
+                  <Typography.Title
+                    level={3}
+                    style={styles.emptyChatTitle as never}
+                  >
+                    Chọn một đoạn chat
+                  </Typography.Title>
+                  <Typography.Text style={styles.emptyChatDescription as never}>
+                    Chọn cuộc trò chuyện bên trái hoặc bắt đầu một tin nhắn mới.
+                  </Typography.Text>
                 </div>
+              )}
+            </div>
 
-                <ChatComposer
-                  value={inputValue}
-                  onChange={(value) => {
-                    setInputValue(value);
+            <ChatComposer
+              value={inputValue}
+              onChange={(value) => {
+                setInputValue(value);
 
-                    if (
-                      !state.selectedConversationId ||
-                      connectionState !== "connected"
-                    ) {
-                      return;
-                    }
+                if (
+                  !state.selectedConversationId ||
+                  connectionState !== "connected"
+                ) {
+                  return;
+                }
 
-                    void chatSocketService.updateTypingPresence(
-                      state.selectedConversationId,
-                      value.trim().length > 0,
-                    );
-                  }}
-                  onSend={handleSend}
-                  onLeave={handleLeave}
-                  loading={state.sendingMessage}
-                  disabled={!state.selectedConversationId}
-                  connectionState={connectionState}
-                />
-              </>
-            ) : (
-              <div style={styles.emptyChatState}>
-                <Typography.Title
-                  level={3}
-                  style={styles.emptyChatTitle as never}
-                >
-                  Chọn một đoạn chat
-                </Typography.Title>
-                <Typography.Text style={styles.emptyChatDescription as never}>
-                  Chọn cuộc trò chuyện bên trái hoặc bắt đầu một tin nhắn mới.
-                </Typography.Text>
-              </div>
-            )}
+                void chatSocketService.updateTypingPresence(
+                  state.selectedConversationId,
+                  value.trim().length > 0,
+                );
+              }}
+              onSend={handleSend}
+              onLeave={handleLeave}
+              loading={state.sendingMessage}
+              disabled={!state.selectedConversationId}
+              connectionState={connectionState}
+            />
           </section>
         </main>
 
@@ -1073,10 +1185,128 @@ export function ChatPage() {
             )}
           </div>
         </Modal>
+
+        <Modal
+          title="Tìm kiếm tin nhắn"
+          open={isMessageSearchOpen}
+          onCancel={resetMessageSearch}
+          onOk={resetMessageSearch}
+          okText="Đóng"
+          cancelButtonProps={{ style: { display: "none" } }}
+        >
+          <div style={styles.modalContent}>
+            <Input
+              value={messageSearchQuery}
+              onChange={(event) => {
+                setMessageSearchQuery(event.target.value);
+                setMessageSearchError(null);
+              }}
+              placeholder="Tìm trong đoạn chat hiện tại"
+              size="large"
+            />
+
+            {messageSearchError ? (
+              <Typography.Text style={styles.searchHint as never}>
+                {messageSearchError}
+              </Typography.Text>
+            ) : messageSearchQuery.trim().length < 2 ? (
+              <Typography.Text style={styles.searchHint as never}>
+                Nhập ít nhất 2 ký tự để tìm tin nhắn.
+              </Typography.Text>
+            ) : searchingMessages ? (
+              <div style={styles.searchState}>
+                <Spin />
+              </div>
+            ) : messageSearchResults.length === 0 ? (
+              <Typography.Text style={styles.searchHint as never}>
+                Không tìm thấy tin nhắn phù hợp.
+              </Typography.Text>
+            ) : (
+              <div style={styles.searchResults}>
+                {messageSearchResults.map((message) => (
+                  <button
+                    key={`${message.messageId}-${message.sentAt}`}
+                    type="button"
+                    style={styles.searchResultItem}
+                    onClick={() => void handleOpenSearchResult(message)}
+                  >
+                    <Avatar src={message.senderAvatarUrl} style={styles.searchResultAvatar}>
+                      {(message.senderDisplayName ?? "U").charAt(0).toUpperCase()}
+                    </Avatar>
+                    <div style={styles.searchResultMeta}>
+                      <Typography.Text style={styles.searchResultName as never}>
+                        {message.senderDisplayName ?? "Người dùng"}
+                      </Typography.Text>
+                      <Typography.Text style={styles.searchResultInfo as never}>
+                        {formatRelativeSentDate(message.sentAt)} · {new Date(message.sentAt).toLocaleTimeString("vi-VN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </Typography.Text>
+                      <Typography.Paragraph style={styles.searchResultMessage as never}>
+                        {renderHighlightedSearchText(message.content, messageSearchQuery)}
+                      </Typography.Paragraph>
+                      <Typography.Text style={styles.searchResultInfo as never}>
+                        Mã hoá: {message.encryptedContent ?? "Không có"}
+                      </Typography.Text>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Modal>
       </div>
     </div>
     </>
   );
+}
+
+function renderHighlightedSearchText(content: string, query: string) {
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) {
+    return content;
+  }
+
+  const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matcher = new RegExp(`(${escapedQuery})`, "ig");
+  const parts = content.split(matcher);
+
+  return parts.map((part, index) => {
+    if (part.toLowerCase() === trimmedQuery.toLowerCase()) {
+      return (
+        <mark key={`${part}-${index}`} style={styles.searchHighlight}>
+          {part}
+        </mark>
+      );
+    }
+
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
+}
+
+function formatRelativeSentDate(value: string) {
+  const sentDate = new Date(value);
+  const now = new Date();
+  const sentDay = new Date(sentDate.getFullYear(), sentDate.getMonth(), sentDate.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffMs = today.getTime() - sentDay.getTime();
+  const diffDays = Math.round(diffMs / 86400000);
+
+  if (diffDays <= 0) {
+    return "Hôm nay";
+  }
+
+  if (diffDays <= 7) {
+    return `${diffDays} ngày trước`;
+  }
+
+  return sentDate.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function selectedConversationIdIsValid(
@@ -1282,6 +1512,18 @@ const styles = {
   searchResultInfo: {
     color: "rgba(67, 20, 7, 0.55)",
     fontSize: 13,
+  } satisfies React.CSSProperties,
+  searchResultMessage: {
+    margin: 0,
+    color: "#431407",
+    fontSize: 13,
+    lineHeight: 1.45,
+  } satisfies React.CSSProperties,
+  searchHighlight: {
+    background: "rgba(251, 191, 36, 0.45)",
+    color: "#431407",
+    padding: "0 2px",
+    borderRadius: 4,
   } satisfies React.CSSProperties,
   contextMenu: {
     position: "fixed",

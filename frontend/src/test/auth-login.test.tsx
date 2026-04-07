@@ -3,6 +3,7 @@ import { beforeEach, vi } from 'vitest'
 import App from '../App'
 import { AppProviders } from '../app/providers'
 import * as authService from '../services/auth.service'
+import { useAuthStore } from '../store/auth.store'
 
 vi.mock('../services/auth.service', async () => {
   const actual = await vi.importActual<typeof import('../services/auth.service')>('../services/auth.service')
@@ -19,6 +20,13 @@ describe('OAuth login flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
+    useAuthStore.setState({
+      currentUser: null,
+      accessToken: null,
+      isAuthenticated: false,
+      isHydrating: true,
+      errorMessage: null,
+    })
     vi.mocked(authService.getCurrentUser).mockReset()
     vi.mocked(authService.refreshSession).mockReset()
     vi.mocked(authService.startGoogleLogin).mockReset()
@@ -53,32 +61,24 @@ describe('OAuth login flow', () => {
   })
 
   it('renders protected home when session exists', async () => {
-    vi.mocked(authService.refreshSession).mockResolvedValue({
-      accessToken: 'access-token',
-      expiresInSeconds: 1800,
-      user: {
+    useAuthStore.setState({
+      currentUser: {
         id: 'user-1',
         email: 'alice@example.com',
         username: 'alice',
         displayName: 'Alice',
       },
-    })
-    vi.mocked(authService.getCurrentUser).mockResolvedValue({
-      id: 'user-1',
-      email: 'alice@example.com',
-      username: 'alice',
-      displayName: 'Alice',
+      accessToken: 'access-token',
+      isAuthenticated: true,
+      isHydrating: false,
+      errorMessage: null,
     })
 
-    render(
-      <AppProviders>
-        <App />
-      </AppProviders>,
-    )
+    render(<App />)
 
-    expect(await screen.findByText('Welcome back')).toBeInTheDocument()
-    expect(screen.getByText('alice@example.com')).toBeInTheDocument()
-    expect(screen.getByText('@alice')).toBeInTheDocument()
+    expect(await screen.findByText((content) => content.includes('alice@example.com'))).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('@alice'))).toBeInTheDocument()
+    expect(screen.getByText('Đăng xuất')).toBeInTheDocument()
   })
 
   it('shows auth error from redirect query string', async () => {

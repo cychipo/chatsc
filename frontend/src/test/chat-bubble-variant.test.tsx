@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../services/chat.service', () => ({
@@ -19,7 +19,9 @@ vi.mock('../store/auth.store', () => ({
 describe('Chat bubble variant', () => {
   it('renders own messages with mine styling', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     const mineBubbles = screen.queryAllByTestId('message-bubble-mine')
     expect(mineBubbles.length).toBeGreaterThanOrEqual(0)
@@ -27,7 +29,9 @@ describe('Chat bubble variant', () => {
 
   it('renders other messages with theirs styling', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     const theirsBubbles = screen.queryAllByTestId('message-bubble-theirs')
     expect(theirsBubbles.length).toBeGreaterThanOrEqual(0)
@@ -35,7 +39,9 @@ describe('Chat bubble variant', () => {
 
   it('own messages align to right', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     const mineBubbles = screen.queryAllByTestId('message-bubble-mine')
     mineBubbles.forEach((bubble) => {
@@ -46,7 +52,9 @@ describe('Chat bubble variant', () => {
 
   it('their messages align to left', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     const theirsBubbles = screen.queryAllByTestId('message-bubble-theirs')
     theirsBubbles.forEach((bubble) => {

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../services/chat.service', () => ({
@@ -30,7 +30,9 @@ vi.mock('../store/auth.store', () => ({
 describe('Chat group timeline', () => {
   it('renders group conversation in list', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     expect(screen.getByTestId('conversation-list')).toBeDefined()
   })

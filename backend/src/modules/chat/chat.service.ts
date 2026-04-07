@@ -31,6 +31,8 @@ export type RealtimeMessagePayload = {
   messageId: string
   conversationId: string
   senderId: string
+  senderDisplayName?: string
+  senderAvatarUrl?: string
   content: string
   sentAt: string
   seenState?: SeenState
@@ -57,14 +59,30 @@ export type ChatMessagePayload = {
   _id: Types.ObjectId | { toString(): string }
   conversationId: Types.ObjectId | { toString(): string }
   senderId: Types.ObjectId | { toString(): string }
+  senderDisplayName?: string
+  senderAvatarUrl?: string
   content: string
-  sentAt: Date
+  encryptedContent?: string
+  sentAt: Date | string
   deliveryStatus?: 'sent' | 'failed'
   seenState?: SeenState
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
   reverseEncryptionState?: ReverseEncryptionState
+}
+
+export type MessageSearchPayload = {
+  messageId: string
+  conversationId: string
+  senderId: string
+  senderDisplayName?: string
+  senderAvatarUrl?: string
+  content: string
+  encryptedContent?: string
+  sentAt: string
+  decodeErrorCode?: string
+  displayState?: MessageDisplayState
 }
 
 export type RealtimeErrorPayload = {
@@ -396,6 +414,46 @@ export class ChatService {
     )
   }
 
+  async searchMessages(conversationId: string, query: string): Promise<MessageSearchPayload[]> {
+    const trimmedQuery = query.trim()
+
+    if (trimmedQuery.length < 2) {
+      return []
+    }
+
+    const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const searchRegex = new RegExp(escapedQuery, 'i')
+
+    const messages = await this.messageModel
+      .find({ conversationId: new Types.ObjectId(conversationId) })
+      .sort({ sentAt: -1 })
+      .limit(100)
+      .lean()
+
+    const displayMessages = await Promise.all(
+      messages.map(async (message) => {
+        const displayMessage = await this.toDisplayMessage(message)
+
+        return {
+          messageId: message._id.toString(),
+          conversationId: message.conversationId.toString(),
+          senderId: message.senderId.toString(),
+          senderDisplayName: displayMessage.senderDisplayName,
+          senderAvatarUrl: displayMessage.senderAvatarUrl,
+          content: displayMessage.content,
+          encryptedContent: message.content,
+          sentAt: message.sentAt.toISOString(),
+          decodeErrorCode: displayMessage.decodeErrorCode,
+          displayState: displayMessage.displayState,
+        }
+      }),
+    )
+
+    return displayMessages
+      .filter((message) => searchRegex.test(message.content))
+      .slice(0, 20)
+  }
+
   async markConversationRead(conversationId: string, userId: string): Promise<MarkConversationReadPayload> {
     const participant = await this.getRequiredActiveParticipant(conversationId, userId)
     const latestMessage = await this.messageModel
@@ -577,10 +635,13 @@ export class ChatService {
         },
       )
 
+      const senderPresentation = await this.buildSenderPresentation(message.senderId)
+
       return {
         messageId: message._id.toString(),
         conversationId: message.conversationId.toString(),
         senderId: message.senderId.toString(),
+        ...senderPresentation,
         content: display.content,
         sentAt: message.sentAt.toISOString(),
         seenState: message.seenState,
@@ -593,10 +654,13 @@ export class ChatService {
         ? error.code
         : 'REVERSE_DECRYPTION_UNAVAILABLE'
 
+      const senderPresentation = await this.buildSenderPresentation(message.senderId)
+
       return {
         messageId: message._id.toString(),
         conversationId: message.conversationId.toString(),
         senderId: message.senderId.toString(),
+        ...senderPresentation,
         content: message.content,
         sentAt: message.sentAt.toISOString(),
         seenState: message.seenState,
@@ -689,6 +753,15 @@ export class ChatService {
     }
   }
 
+  private async buildSenderPresentation(senderId: Types.ObjectId | { toString(): string }) {
+    const sender = await this.authService.findById(senderId.toString())
+
+    return {
+      senderDisplayName: sender?.displayName,
+      senderAvatarUrl: sender?.avatarUrl,
+    }
+  }
+
   private async toDisplayMessage<T extends {
     content: string
     senderId: Types.ObjectId | { toString(): string }
@@ -696,6 +769,8 @@ export class ChatService {
     reverseEncryptionState?: ReverseEncryptionState
     decodeErrorCode?: string
   }>(message: T) {
+    const senderPresentation = await this.buildSenderPresentation(message.senderId)
+
     try {
       const display = await this.chatEncryptionService.decryptForDisplay(
         message.content,
@@ -708,6 +783,7 @@ export class ChatService {
 
       return {
         ...message,
+        ...senderPresentation,
         content: display.content,
         decodeErrorCode: display.decodeErrorCode,
         displayState: display.displayState,
@@ -719,6 +795,7 @@ export class ChatService {
 
       return {
         ...message,
+        ...senderPresentation,
         content: '[Không thể khôi phục nội dung tin nhắn]',
         decodeErrorCode: failureCode,
         displayState: 'decode_failed' as const,
