@@ -22,7 +22,7 @@ Thumbs.db
 *.tmp
 *.swp
 *.log
-.env*
+.env
 .kernel-build/
 .kernel-vm/
 .kernel-vm-kheaders.tar.xz

@@ -1,0 +1,56 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: chatsc-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+      - mongo-data-config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    container_name: chatsc-backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PORT: "5634"
+      MONGODB_URI: mongodb://mongo:27017/chatsc
+      FRONTEND_APP_URL: http://localhost:5734
+    ports:
+      - "5634:5634"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5634/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5634/api}
+    container_name: chatsc-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5734:5734"
+
+volumes:
+  mongo-data:
+  mongo-data-config:
