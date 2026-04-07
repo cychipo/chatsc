@@ -9,6 +9,8 @@ import { Conversation, ConversationSchema } from './schemas/conversation.schema'
 import { ConversationParticipant, ConversationParticipantSchema } from './schemas/conversation-participant.schema'
 import { Message, MessageSchema } from './schemas/message.schema'
 import { MembershipEvent, MembershipEventSchema } from './schemas/membership-event.schema'
+import { ChatAttachment, ChatAttachmentSchema } from './schemas/chat-attachment.schema'
+import { ChatAttachmentService } from './chat-attachment.service'
 
 @Module({
   imports: [
@@ -18,10 +20,11 @@ import { MembershipEvent, MembershipEventSchema } from './schemas/membership-eve
       { name: ConversationParticipant.name, schema: ConversationParticipantSchema },
       { name: Message.name, schema: MessageSchema },
       { name: MembershipEvent.name, schema: MembershipEventSchema },
+      { name: ChatAttachment.name, schema: ChatAttachmentSchema },
     ]),
   ],
   controllers: [ChatController],
-  providers: [ChatService, ChatEncryptionService, ChatGateway],
+  providers: [ChatService, ChatEncryptionService, ChatGateway, ChatAttachmentService],
   exports: [ChatService],
 })
 export class ChatModule {}

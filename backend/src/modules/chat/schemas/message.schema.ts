@@ -7,6 +7,23 @@ export type DeliveryStatus = 'sent' | 'failed'
 export type SeenState = 'sent' | 'seen'
 export type ReverseEncryptionState = 'legacy' | 'encrypted' | 'decode_failed'
 
+export class MessageAttachment {
+  @Prop({ type: Types.ObjectId, ref: 'ChatAttachment', required: true })
+  attachmentId!: Types.ObjectId
+
+  @Prop({ required: true })
+  fileName!: string
+
+  @Prop({ required: true })
+  mimeType!: string
+
+  @Prop({ required: true })
+  sizeBytes!: number
+
+  @Prop({ required: true })
+  isImage!: boolean
+}
+
 @Schema({ timestamps: true })
 export class Message {
   @Prop({ type: Types.ObjectId, ref: 'Conversation', required: true })
@@ -15,7 +32,7 @@ export class Message {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   senderId!: Types.ObjectId
 
-  @Prop({ required: true })
+  @Prop({ required: false, default: '' })
   content!: string
 
   @Prop({ required: true, enum: ['legacy', 'encrypted', 'decode_failed'], default: 'legacy' })
@@ -35,6 +52,9 @@ export class Message {
 
   @Prop()
   decodeErrorCode?: string
+
+  @Prop({ type: MessageAttachment, required: false })
+  attachment?: MessageAttachment
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message)

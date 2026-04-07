@@ -8,6 +8,7 @@ import { Conversation, ConversationDocument } from './schemas/conversation.schem
 import { ConversationParticipant, ConversationParticipantDocument } from './schemas/conversation-participant.schema'
 import { Message, MessageDocument, ReverseEncryptionState, SeenState } from './schemas/message.schema'
 import { MembershipEvent, MembershipEventDocument } from './schemas/membership-event.schema'
+import { ChatAttachment, ChatAttachmentDocument } from './schemas/chat-attachment.schema'
 
 type ConversationSummary = {
   _id: string
@@ -27,6 +28,17 @@ type ConversationSummary = {
 
 export type MessageDisplayState = 'ready' | 'decode_failed'
 
+export type ChatAttachmentPayload = {
+  attachmentId: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  isImage: boolean
+  uploaderId?: string
+  conversationId?: string
+  messageId?: string
+}
+
 export type RealtimeMessagePayload = {
   messageId: string
   conversationId: string
@@ -36,6 +48,7 @@ export type RealtimeMessagePayload = {
   content: string
   sentAt: string
   seenState?: SeenState
+  attachment?: ChatAttachmentPayload
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
@@ -66,6 +79,7 @@ export type ChatMessagePayload = {
   sentAt: Date | string
   deliveryStatus?: 'sent' | 'failed'
   seenState?: SeenState
+  attachment?: ChatAttachmentPayload
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
@@ -102,6 +116,8 @@ export class ChatService {
     private messageModel: Model<MessageDocument>,
     @InjectModel(MembershipEvent.name)
     private membershipEventModel: Model<MembershipEventDocument>,
+    @InjectModel(ChatAttachment.name)
+    private attachmentModel: Model<ChatAttachmentDocument>,
     private authService: AuthService,
     private chatEncryptionService: ChatEncryptionService,
   ) {}
@@ -143,6 +159,8 @@ export class ChatService {
             : null
           const displayTitle = directPeer?.displayName ?? conversation.title ?? 'Đoạn chat mới'
 
+          const latestDisplayMessage = latestMessage ? await this.toDisplayMessage(latestMessage) : null
+
           return {
             _id: conversation._id.toString(),
             type: conversation.type,
@@ -155,12 +173,14 @@ export class ChatService {
               conversation.lastMessageAt?.toISOString(),
             displayTitle,
             displayAvatarUrl: directPeer?.avatarUrl,
-            lastMessagePreview: latestMessage ? (await this.toDisplayMessage(latestMessage)).content : undefined,
+            lastMessagePreview: latestDisplayMessage ? this.buildMessagePreview(latestDisplayMessage) : undefined,
             unreadCount,
             hasUnread,
             directPeer: directPeer ?? undefined,
           }
         }
+
+        const latestDisplayMessage = latestMessage ? await this.toDisplayMessage(latestMessage) : null
 
         return {
           _id: conversation._id.toString(),
@@ -173,7 +193,7 @@ export class ChatService {
             latestMessage?.sentAt?.toISOString() ??
             conversation.lastMessageAt?.toISOString(),
           displayTitle: conversation.title ?? 'Nhóm chat',
-          lastMessagePreview: latestMessage ? (await this.toDisplayMessage(latestMessage)).content : undefined,
+          lastMessagePreview: latestDisplayMessage ? this.buildMessagePreview(latestDisplayMessage) : undefined,
           unreadCount,
           hasUnread,
         }
@@ -296,22 +316,59 @@ export class ChatService {
     return null
   }
 
-  async sendMessage(conversationId: string, senderId: string, content: string) {
+  async sendMessage(conversationId: string, senderId: string, content: string, attachmentIdValue?: string) {
     const trimmedContent = content.trim()
+    const activeSender = await this.getRequiredActiveParticipant(conversationId, senderId)
+    const restoredParticipants = await this.restoreDirectParticipantsIfNeeded(conversationId, senderId)
 
-    if (!trimmedContent) {
+    let attachmentDocument: ChatAttachmentDocument | null = null
+
+    if (attachmentIdValue) {
+      if (!Types.ObjectId.isValid(attachmentIdValue)) {
+        throw new BadRequestException({
+          code: 'INVALID_ATTACHMENT_ID',
+          message: 'Attachment ID is invalid',
+        })
+      }
+
+      attachmentDocument = await this.attachmentModel.findById(new Types.ObjectId(attachmentIdValue))
+
+      if (!attachmentDocument || attachmentDocument.conversationId.toString() !== conversationId) {
+        throw new BadRequestException({
+          code: 'ATTACHMENT_NOT_FOUND',
+          message: 'Attachment not found',
+        })
+      }
+
+      if (attachmentDocument.uploaderId.toString() !== senderId) {
+        throw new ForbiddenException('Attachment does not belong to this user')
+      }
+
+      if (attachmentDocument.status !== 'uploaded') {
+        throw new BadRequestException({
+          code: 'ATTACHMENT_NOT_READY',
+          message: 'Attachment upload is not ready',
+        })
+      }
+    }
+
+    if (!trimmedContent && !attachmentDocument) {
       throw new BadRequestException({
         code: 'EMPTY_MESSAGE',
         message: 'Message content cannot be empty',
       })
     }
 
-    const activeSender = await this.getRequiredActiveParticipant(conversationId, senderId)
-    const restoredParticipants = await this.restoreDirectParticipantsIfNeeded(conversationId, senderId)
-    const encrypted = await this.chatEncryptionService.encryptForStorage(trimmedContent, {
-      senderId,
-      conversationId,
-    })
+    const encrypted = trimmedContent
+      ? await this.chatEncryptionService.encryptForStorage(trimmedContent, {
+        senderId,
+        conversationId,
+      })
+      : {
+        content: '',
+        reverseEncryptionState: 'legacy' as const,
+        decodeErrorCode: undefined as string | undefined,
+      }
 
     const message = await this.messageModel.create({
       conversationId: new Types.ObjectId(conversationId),
@@ -323,7 +380,23 @@ export class ChatService {
       deliveryStatus: 'sent',
       seenState: 'sent',
       decodeErrorCode: encrypted.decodeErrorCode,
+      attachment: attachmentDocument
+        ? {
+          attachmentId: attachmentDocument._id,
+          fileName: attachmentDocument.originalName,
+          mimeType: attachmentDocument.mimeType,
+          sizeBytes: attachmentDocument.sizeBytes,
+          isImage: attachmentDocument.isImage,
+        }
+        : undefined,
     })
+
+    if (attachmentDocument) {
+      attachmentDocument.messageId = message._id
+      attachmentDocument.status = 'attached'
+      attachmentDocument.confirmedAt = new Date()
+      await attachmentDocument.save()
+    }
 
     await this.conversationModel.updateOne(
       { _id: new Types.ObjectId(conversationId) },
@@ -347,8 +420,8 @@ export class ChatService {
     }
   }
 
-  async sendRealtimeMessage(conversationId: string, senderId: string, content: string) {
-    const { message, restoredParticipants } = await this.sendMessage(conversationId, senderId, content)
+  async sendRealtimeMessage(conversationId: string, senderId: string, content: string, attachmentIdValue?: string) {
+    const { message, restoredParticipants } = await this.sendMessage(conversationId, senderId, content, attachmentIdValue)
     return {
       message: await this.toRealtimeMessagePayload(message),
       previewByUserId: await this.buildConversationPreviewPayloads(conversationId),
@@ -369,9 +442,18 @@ export class ChatService {
       sortedMessages.map(async (message, index) => {
         const nextMessage = sortedMessages[index + 1]
         const displayMessage = await this.toDisplayMessage(message)
+        const { attachment: _rawAttachment, ...messageWithoutAttachment } = displayMessage as typeof displayMessage & {
+          attachment?: { attachmentId: Types.ObjectId | { toString(): string }; fileName: string; mimeType: string; sizeBytes: number; isImage: boolean }
+        }
 
         return {
-          ...displayMessage,
+          ...messageWithoutAttachment,
+          attachment: this.buildAttachmentPayload({
+            attachment: _rawAttachment,
+            senderId: displayMessage.senderId,
+            conversationId: displayMessage.conversationId,
+            messageId: displayMessage._id,
+          }),
           isTailOfSenderGroup: nextMessage ? nextMessage.senderId.toString() !== message.senderId.toString() : true,
         }
       }),
@@ -393,7 +475,7 @@ export class ChatService {
 
     return {
       conversationId,
-      lastMessagePreview: previewMessage?.content ?? '',
+      lastMessagePreview: previewMessage ? this.buildMessagePreview(previewMessage) : '',
       lastMessageAt:
         latestMessage?.sentAt?.toISOString() ??
         conversation?.lastMessageAt?.toISOString() ??
@@ -645,6 +727,12 @@ export class ChatService {
         content: display.content,
         sentAt: message.sentAt.toISOString(),
         seenState: message.seenState,
+        attachment: this.buildAttachmentPayload({
+          attachment: (message as { attachment?: { attachmentId: Types.ObjectId | { toString(): string }; fileName: string; mimeType: string; sizeBytes: number; isImage: boolean } }).attachment,
+          senderId: message.senderId,
+          conversationId: message.conversationId,
+          messageId: message._id,
+        }),
         isTailOfSenderGroup: true,
         decodeErrorCode: display.decodeErrorCode,
         displayState: display.displayState,
@@ -664,6 +752,12 @@ export class ChatService {
         content: message.content,
         sentAt: message.sentAt.toISOString(),
         seenState: message.seenState,
+        attachment: this.buildAttachmentPayload({
+          attachment: (message as { attachment?: { attachmentId: Types.ObjectId | { toString(): string }; fileName: string; mimeType: string; sizeBytes: number; isImage: boolean } }).attachment,
+          senderId: message.senderId,
+          conversationId: message.conversationId,
+          messageId: message._id,
+        }),
         isTailOfSenderGroup: true,
         decodeErrorCode: failureCode,
         displayState: 'decode_failed' as const,
@@ -762,12 +856,52 @@ export class ChatService {
     }
   }
 
+  private buildAttachmentPayload(input: {
+    attachment?: { attachmentId: Types.ObjectId | { toString(): string }; fileName: string; mimeType: string; sizeBytes: number; isImage: boolean }
+    senderId: Types.ObjectId | { toString(): string }
+    conversationId: Types.ObjectId | { toString(): string }
+    messageId: Types.ObjectId | { toString(): string }
+  }): ChatAttachmentPayload | undefined {
+    if (!input.attachment) {
+      return undefined
+    }
+
+    return {
+      attachmentId: input.attachment.attachmentId.toString(),
+      fileName: input.attachment.fileName,
+      mimeType: input.attachment.mimeType,
+      sizeBytes: input.attachment.sizeBytes,
+      isImage: input.attachment.isImage,
+      uploaderId: input.senderId.toString(),
+      conversationId: input.conversationId.toString(),
+      messageId: input.messageId.toString(),
+    }
+  }
+
+  private buildMessagePreview(message: {
+    content: string
+    attachment?: {
+      fileName: string
+      isImage: boolean
+    }
+  }) {
+    if (message.attachment) {
+      return message.attachment.isImage
+        ? `[Ảnh] ${message.attachment.fileName}`
+        : `[Tệp] ${message.attachment.fileName}`
+    }
+
+    return message.content
+  }
+
   private async toDisplayMessage<T extends {
+    _id?: Types.ObjectId | { toString(): string }
     content: string
     senderId: Types.ObjectId | { toString(): string }
     conversationId: Types.ObjectId | { toString(): string }
     reverseEncryptionState?: ReverseEncryptionState
     decodeErrorCode?: string
+    attachment?: { attachmentId: Types.ObjectId | { toString(): string }; fileName: string; mimeType: string; sizeBytes: number; isImage: boolean }
   }>(message: T) {
     const senderPresentation = await this.buildSenderPresentation(message.senderId)
 

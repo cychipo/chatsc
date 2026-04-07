@@ -1,5 +1,7 @@
-import { Avatar, Typography } from 'antd'
-import type { Message, MembershipEvent } from '../../../types/chat'
+import { useEffect, useState } from 'react'
+import { Avatar, Image, Typography } from 'antd'
+import type { Message, MembershipEvent, ChatAttachment } from '../../../types/chat'
+import { FileCard } from './file-card'
 
 type MessageBubbleProps = {
   message: Message
@@ -8,13 +10,54 @@ type MessageBubbleProps = {
   authorAvatarUrl?: string
   anchorId?: string
   highlighted?: boolean
+  resolveAttachmentUrl?: (attachmentId: string) => Promise<string>
+  onAttachmentClick?: (attachment: ChatAttachment) => void
+  onAttachmentDownload?: (attachment: ChatAttachment) => void
 }
 
 function buildAvatarFallbackLabel(authorName: string) {
   return authorName.trim().charAt(0).toUpperCase() || 'U'
 }
 
-export function MessageBubble({ message, isMine, authorName, authorAvatarUrl, anchorId, highlighted = false }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  isMine,
+  authorName,
+  authorAvatarUrl,
+  anchorId,
+  highlighted = false,
+  resolveAttachmentUrl,
+  onAttachmentClick,
+  onAttachmentDownload,
+}: MessageBubbleProps) {
+  const attachment = message.attachment
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!attachment?.isImage || !attachment.attachmentId || !resolveAttachmentUrl) {
+      setImageUrl(null)
+      return
+    }
+
+    let active = true
+
+    void resolveAttachmentUrl(attachment.attachmentId)
+      .then((url) => {
+        if (active) {
+          setImageUrl(url)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setImageUrl(null)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [attachment?.attachmentId, attachment?.isImage, resolveAttachmentUrl])
+
   return (
     <article
       id={anchorId}
@@ -41,7 +84,29 @@ export function MessageBubble({ message, isMine, authorName, authorAvatarUrl, an
           ) : null}
 
           <div style={{ ...styles.bubble, ...(isMine ? styles.outgoing : styles.incoming) }}>
-            <Typography.Paragraph style={styles.content as never}>{message.content}</Typography.Paragraph>
+            {message.content.trim().length > 0 ? (
+              <Typography.Paragraph style={styles.content as never}>{message.content}</Typography.Paragraph>
+            ) : null}
+
+            {attachment?.isImage ? (
+              <button
+                type="button"
+                onClick={() => onAttachmentClick?.(attachment)}
+                style={styles.imageButton}
+              >
+                {imageUrl ? (
+                  <Image src={imageUrl} alt={attachment.fileName} preview={false} style={styles.imagePreview} />
+                ) : (
+                  <div style={styles.imageFallback}>
+                    <Typography.Text style={styles.imageFallbackText as never}>
+                      {attachment.fileName}
+                    </Typography.Text>
+                  </div>
+                )}
+              </button>
+            ) : attachment ? (
+              <FileCard attachment={attachment} onDownload={onAttachmentDownload} />
+            ) : null}
           </div>
           {isMine && message.isTailOfSenderGroup ? (
             <Typography.Text style={styles.statusText as never}>
@@ -116,6 +181,8 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: '100%',
     padding: '12px 14px',
     borderRadius: 18,
+    display: 'grid',
+    gap: 10,
   },
   incoming: {
     background: '#ffe2db',
@@ -132,6 +199,33 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'inherit',
     lineHeight: 1.55,
     fontSize: 13,
+  },
+  imageButton: {
+    border: 'none',
+    background: 'transparent',
+    padding: 0,
+    cursor: 'pointer',
+    display: 'block',
+    textAlign: 'left',
+  },
+  imagePreview: {
+    width: 240,
+    maxWidth: '100%',
+    borderRadius: 14,
+    objectFit: 'cover',
+  },
+  imageFallback: {
+    width: 240,
+    maxWidth: '100%',
+    minHeight: 140,
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 14,
+    background: 'rgba(255,255,255,0.24)',
+    padding: 16,
+  },
+  imageFallbackText: {
+    color: 'inherit',
   },
   statusText: {
     color: '#8d7168',
@@ -155,10 +249,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8d7168',
     fontSize: 12,
     lineHeight: 1.45,
-  },
-  myAvatar: {
-    background: 'linear-gradient(135deg, #9b2f00, #c2410c)',
-    color: '#ffffff',
   },
   theirAvatar: {
     background: '#ffffff',
