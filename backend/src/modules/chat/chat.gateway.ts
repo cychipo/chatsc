@@ -49,6 +49,7 @@ type LeaveConversationPayload = {
 type SendMessagePayload = {
   conversationId: string
   content: string
+  attachmentId?: string
 }
 
 type MarkConversationReadSocketPayload = {
@@ -152,7 +153,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     try {
       const content = payload.content.trim()
-      const result = await this.chatService.sendRealtimeMessage(payload.conversationId, user.id, content)
+      const result = await this.chatService.sendRealtimeMessage(payload.conversationId, user.id, content, payload.attachmentId)
       await this.emitConversationPreviews(result.previewByUserId)
       await this.emitRealtimeMessage(payload.conversationId, result.previewByUserId.map((entry) => entry.userId), result.message)
       return { success: true, data: result.message }
@@ -212,7 +213,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  private async emitConversationPreviews(entries: Array<{ userId: string; preview: ConversationPreviewPayload }>) {
+  async emitConversationPreviews(entries: Array<{ userId: string; preview: ConversationPreviewPayload }>) {
     for (const entry of entries) {
       this.server
         .to(getUserRoom(entry.userId))
@@ -220,7 +221,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  private async emitRealtimeMessage(
+  async emitRealtimeMessage(
     conversationId: string,
     participantUserIds: string[],
     message: RealtimeMessagePayload,

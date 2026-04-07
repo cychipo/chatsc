@@ -70,7 +70,7 @@ async function runSharedRefresh() {
 http.interceptors.request.use((config) => {
   const nextConfig = config as InternalAxiosRequestConfig
 
-  if (accessToken) {
+  if (accessToken && !nextConfig.skipAuthRefresh) {
     nextConfig.headers.set('Authorization', `Bearer ${accessToken}`)
   }
 

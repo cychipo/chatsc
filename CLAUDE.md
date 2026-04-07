@@ -1,6 +1,6 @@
 # chatsc Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-07
+Auto-generated from all feature plans. Last updated: 2026-04-08
 
 ## Active Technologies
 - TypeScript cho cả frontend và backend; Node.js LTS cho môi trường phát triển + NestJS, MongoDB, Mongoose, React, Vite, Ant Design, Zustand, Axios 1.12, Lucide, Yarn (004-chat-groups)
@@ -20,6 +20,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-07
 - MongoDB cho conversation/participant/message; trạng thái tạm thời typing qua realtime layer; browser runtime state cho chat UI (010-message-presence-status)
 - TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Lucide React, Vitest, React Testing Library (012-chat-ui-controls)
 - MongoDB cho conversation/message persistence; browser runtime state cho sidebar toggle và search popup (012-chat-ui-controls)
+- TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, @aws-sdk/client-s3 (R2/S3-compatible), Vitest, React Testing Library (013-chat-file-upload)
+- MongoDB cho file attachment metadata; Cloudflare R2 cho file binary; browser runtime state cho image viewer (013-chat-file-upload)
 
 - C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
 
@@ -39,7 +41,7 @@ tests/
 C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host: Follow standard conventions
 
 ## Recent Changes
+- 013-chat-file-upload: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, @aws-sdk/client-s3 (R2/S3-compatible), Vitest, React Testing Library
 - 012-chat-ui-controls: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Lucide React, Vitest, React Testing Library
 - 010-message-presence-status: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, Socket.IO, React 18, Zustand 5, Axios 1.12, Ant Design 5
-- 009-local-auth: Added TypeScript 5.x cho frontend và backend; C/GCC cho dịch vụ xử lý SHA1 từ xa hiện có + NestJS 10, Mongoose 8, Passport session, jsonwebtoken, React 18, Zustand 5, Axios 1.12, Ant Design 5, dịch vụ remote processor qua TCP đã có sẵn
 

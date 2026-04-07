@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Avatar, Button, Input, Modal, Spin, Typography } from "antd";
+import { Avatar, Button, Input, Modal, Spin, Typography, message as antdMessage } from "antd";
 import { Search, Ellipsis, LogOut, Plus } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { searchUsers } from "../../services/auth.service";
@@ -14,6 +14,15 @@ import {
   markConversationRead,
   searchMessages,
 } from "../../services/chat.service";
+import {
+  getAttachmentStatus,
+  getPresignedDownloadUrl,
+  getPresignedUploadUrl,
+  markAttachmentUploaded,
+  triggerBrowserDownload,
+  uploadFileToPresignedUrl,
+} from "../../services/chat-attachment.service";
+import type { AttachmentUploadError } from "../../services/chat-attachment.service";
 import { chatSocketService } from "../../services/chat-socket.service";
 import type { SearchableUser } from "../../types/auth";
 import type {
@@ -22,6 +31,8 @@ import type {
   Conversation,
   ConversationPreviewUpdate,
   MembershipEvent,
+  ChatAttachment,
+  DraftAttachment,
   Message,
   MessageSearchResult,
   RealtimeMessage,
@@ -29,6 +40,7 @@ import type {
 } from "../../types/chat";
 import { ChatComposer } from "./components/chat-composer";
 import { ConversationList } from "./components/conversation-list";
+import { ImageViewer } from "./components/image-viewer";
 import { EventBubble, MessageBubble } from "./components/message-bubble";
 
 type ChatState = {
@@ -39,6 +51,7 @@ type ChatState = {
   loadingConversations: boolean;
   loadingMessages: boolean;
   sendingMessage: boolean;
+  draftAttachment: DraftAttachment | null;
   hasMoreMessages: boolean;
   typingByConversationId: Record<string, TypingPresenceUpdate | undefined>;
 };
@@ -47,6 +60,14 @@ type ConversationContextMenuState = {
   conversationId: string;
   x: number;
   y: number;
+};
+
+type ImageViewerState = {
+  isOpen: boolean;
+  attachment: ChatAttachment | null;
+  imageUrl: string;
+  scale: number;
+  loading: boolean;
 };
 
 const SELECTED_CONVERSATION_PARAM = "conversationId";
@@ -124,6 +145,7 @@ export function ChatPage() {
     loadingConversations: true,
     loadingMessages: false,
     sendingMessage: false,
+    draftAttachment: null,
     hasMoreMessages: true,
     typingByConversationId: {},
   });
@@ -148,6 +170,13 @@ export function ChatPage() {
     useState<ConversationContextMenuState | null>(null);
   const [connectionState, setConnectionState] =
     useState<ChatConnectionState>("disconnected");
+  const [imageViewer, setImageViewer] = useState<ImageViewerState>({
+    isOpen: false,
+    attachment: null,
+    imageUrl: "",
+    scale: 1,
+    loading: false,
+  });
   const messageThreadRef = useRef<HTMLDivElement>(null);
   const joinedConversationRef = useRef<string | null>(null);
   const hasRestoredConversationFromUrlRef = useRef(false);
@@ -301,7 +330,7 @@ export function ChatPage() {
 
       if (incomingMessage.senderId === currentUser?.id) {
         setInputValue("");
-        setState((prev) => ({ ...prev, sendingMessage: false }));
+        setState((prev) => ({ ...prev, sendingMessage: false, draftAttachment: null }));
       }
     },
     [currentUser?.id, loadConversations],
@@ -415,8 +444,11 @@ export function ChatPage() {
     [currentUser?.id],
   );
 
-  const handleSocketError = useCallback((_error: ChatSocketError) => {
+  const handleSocketError = useCallback((error: ChatSocketError) => {
     setState((prev) => ({ ...prev, sendingMessage: false }));
+    if (error.message) {
+      antdMessage.error(error.message);
+    }
   }, []);
 
   useEffect(() => {
@@ -497,7 +529,6 @@ export function ChatPage() {
       unsubscribeRead();
       unsubscribeTyping();
       unsubscribeError();
-      chatSocketService.disconnect();
     };
   }, [
     handleConversationRead,
@@ -680,8 +711,76 @@ export function ChatPage() {
     }
   }, [loadMoreMessages, state.hasMoreMessages, state.loadingMessages]);
 
+  const resolveAttachmentUrl = useCallback(async (attachmentId: string) => {
+    const result = await getPresignedDownloadUrl(attachmentId);
+    return result.presignedUrl;
+  }, []);
+
+  const handleDownloadAttachment = useCallback(async (attachment: ChatAttachment) => {
+    if (!attachment.attachmentId) {
+      return;
+    }
+
+    try {
+      const result = await getPresignedDownloadUrl(attachment.attachmentId);
+      await triggerBrowserDownload(result.presignedUrl, result.fileName);
+    } catch {
+      antdMessage.error("Không thể tải tệp lúc này.");
+    }
+  }, []);
+
+  const handleOpenImageAttachment = useCallback(async (attachment: ChatAttachment) => {
+    if (!attachment.attachmentId) {
+      return;
+    }
+
+    setImageViewer({
+      isOpen: true,
+      attachment,
+      imageUrl: "",
+      scale: 1,
+      loading: true,
+    });
+
+    try {
+      const result = await getPresignedDownloadUrl(attachment.attachmentId);
+      setImageViewer({
+        isOpen: true,
+        attachment,
+        imageUrl: result.presignedUrl,
+        scale: 1,
+        loading: false,
+      });
+    } catch {
+      setImageViewer({
+        isOpen: true,
+        attachment,
+        imageUrl: "",
+        scale: 1,
+        loading: false,
+      });
+      antdMessage.error("Không thể mở ảnh lúc này.");
+    }
+  }, []);
+
+  const handleUploadFile = useCallback(async (file: File) => {
+    if (!state.selectedConversationId || state.sendingMessage) {
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      draftAttachment: {
+        localId: `${Date.now()}`,
+        file,
+        progress: 0,
+        status: 'pending',
+      },
+    }));
+  }, [state.selectedConversationId, state.sendingMessage]);
+
   const handleSend = async () => {
-    if (!inputValue.trim()) {
+    if (!inputValue.trim() && !state.draftAttachment) {
       return;
     }
 
@@ -696,16 +795,82 @@ export function ChatPage() {
     setState((prev) => ({ ...prev, sendingMessage: true }));
 
     try {
+      let attachmentId: string | undefined
+
+      if (state.draftAttachment) {
+        const file = state.draftAttachment.file
+        const presigned = await getPresignedUploadUrl({
+          conversationId: state.selectedConversationId,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        })
+
+        setState((prev) => prev.draftAttachment
+          ? {
+            ...prev,
+            draftAttachment: {
+              ...prev.draftAttachment,
+              attachmentId: presigned.attachmentId,
+              status: 'uploading',
+              progress: 0,
+            },
+          }
+          : prev)
+
+        const controller = new AbortController()
+        await uploadFileToPresignedUrl(presigned.presignedUrl, file, controller.signal, (progress) => {
+          setState((prev) => prev.draftAttachment
+            ? {
+              ...prev,
+              draftAttachment: {
+                ...prev.draftAttachment,
+                progress,
+                status: 'uploading',
+              },
+            }
+            : prev)
+        })
+
+        await markAttachmentUploaded(state.selectedConversationId, presigned.attachmentId)
+        const status = await getAttachmentStatus(presigned.attachmentId)
+        attachmentId = status.attachmentId
+
+        setState((prev) => prev.draftAttachment
+          ? {
+            ...prev,
+            draftAttachment: {
+              ...prev.draftAttachment,
+              attachmentId,
+              progress: 100,
+              status: 'uploaded',
+            },
+          }
+          : prev)
+      }
+
       await chatSocketService.sendMessage(
         state.selectedConversationId,
         inputValue.trim(),
-      );
+        attachmentId,
+      )
       await chatSocketService.updateTypingPresence(
         state.selectedConversationId,
         false,
-      );
-    } catch {
-      setState((prev) => ({ ...prev, sendingMessage: false }));
+      )
+    } catch (error) {
+      const uploadError = error as AttachmentUploadError;
+      setState((prev) => ({
+        ...prev,
+        sendingMessage: false,
+        draftAttachment: prev.draftAttachment
+          ? {
+            ...prev.draftAttachment,
+            status: 'failed',
+            error: uploadError.detailMessage || uploadError.message || 'Không thể gửi tệp lúc này.',
+          }
+          : null,
+      }));
     }
   };
 
@@ -1011,6 +1176,9 @@ export function ChatPage() {
                             highlighted={highlightedMessageId === item.message._id}
                             message={item.message}
                             isMine={item.message.senderId === currentUser?.id}
+                            resolveAttachmentUrl={resolveAttachmentUrl}
+                            onAttachmentClick={handleOpenImageAttachment}
+                            onAttachmentDownload={handleDownloadAttachment}
                             authorName={
                               item.message.senderId === currentUser?.id
                                 ? (item.message.senderDisplayName ??
@@ -1080,6 +1248,11 @@ export function ChatPage() {
               }}
               onSend={handleSend}
               onLeave={handleLeave}
+              onSelectFile={handleUploadFile}
+              onRemoveDraftAttachment={() =>
+                setState((prev) => ({ ...prev, draftAttachment: null }))
+              }
+              draftAttachment={state.draftAttachment}
               loading={state.sendingMessage}
               disabled={!state.selectedConversationId}
               connectionState={connectionState}
@@ -1185,6 +1358,33 @@ export function ChatPage() {
             )}
           </div>
         </Modal>
+
+        <ImageViewer
+          open={imageViewer.isOpen}
+          attachment={imageViewer.attachment}
+          imageUrl={imageViewer.imageUrl}
+          loading={imageViewer.loading}
+          scale={imageViewer.scale}
+          onClose={() =>
+            setImageViewer({
+              isOpen: false,
+              attachment: null,
+              imageUrl: "",
+              scale: 1,
+              loading: false,
+            })
+          }
+          onZoomIn={() =>
+            setImageViewer((prev) => ({ ...prev, scale: Math.min(prev.scale + 0.25, 3) }))
+          }
+          onZoomOut={() =>
+            setImageViewer((prev) => ({ ...prev, scale: Math.max(prev.scale - 0.25, 0.5) }))
+          }
+          onReset={() => setImageViewer((prev) => ({ ...prev, scale: 1 }))}
+          onDownload={() =>
+            imageViewer.attachment ? void handleDownloadAttachment(imageViewer.attachment) : undefined
+          }
+        />
 
         <Modal
           title="Tìm kiếm tin nhắn"

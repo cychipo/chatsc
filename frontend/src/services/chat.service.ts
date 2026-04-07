@@ -55,6 +55,7 @@ export function mapRealtimeMessage(message: RealtimeMessage): Message {
     sentAt: message.sentAt,
     deliveryStatus: 'sent',
     seenState: message.seenState,
+    attachment: message.attachment,
     isTailOfSenderGroup: message.isTailOfSenderGroup,
     decodeErrorCode: message.decodeErrorCode,
     displayState: message.displayState,

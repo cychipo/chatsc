@@ -189,10 +189,11 @@ class ChatSocketService {
     await this.emitWithAck<{ conversationId: string }>('leave_conversation', { conversationId })
   }
 
-  async sendMessage(conversationId: string, content: string) {
+  async sendMessage(conversationId: string, content: string, attachmentId?: string) {
     return this.emitWithAck<RealtimeMessage>('send_message', {
       conversationId,
       content,
+      attachmentId,
     })
   }
 

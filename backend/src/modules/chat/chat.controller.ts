@@ -15,7 +15,10 @@ import {
 import { AccessTokenAuthGuard } from '../auth/guards/access-token-auth.guard'
 import { SessionUser } from '../auth/types/auth-session'
 import { ChatService } from './chat.service'
+import { ChatAttachmentService } from './chat-attachment.service'
+import { ChatGateway } from './chat.gateway'
 import { CreateConversationDto, AddMemberDto, GetMessagesQueryDto, MarkConversationReadDto, SearchMessagesQueryDto } from './dto/chat.dto'
+import { ConfirmAttachmentDto, GeneratePresignedUploadDto, MarkAttachmentUploadedDto } from './dto/chat-attachment.dto'
 import { requireActiveParticipant, requireAdminOrOwner } from './utils/participant-access.util'
 
 type AuthenticatedRequest = Request & {
@@ -37,7 +40,11 @@ function wrapSuccess<T>(data: T): ChatApiResponse<T> {
 @Controller('chat')
 @UseGuards(AccessTokenAuthGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly chatAttachmentService: ChatAttachmentService = {} as ChatAttachmentService,
+    private readonly chatGateway: ChatGateway = {} as ChatGateway,
+  ) {}
 
   @Get('status')
   getStatus(@Req() request: AuthenticatedRequest) {
@@ -160,6 +167,78 @@ export class ChatController {
 
     await requireActiveParticipant(this.chatService, conversationId, userId)
     const result = await this.chatService.markConversationRead(conversationId, userId)
+    return wrapSuccess(result)
+  }
+
+  @Post('attachments/presigned-upload')
+  async generatePresignedUploadUrl(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: GeneratePresignedUploadDto,
+  ) {
+    const result = await this.chatAttachmentService.generatePresignedUploadUrl(req.user!.id, dto)
+    return wrapSuccess(result)
+  }
+
+  @Post('conversations/:conversationId/attachments/uploaded')
+  @HttpCode(HttpStatus.OK)
+  async markAttachmentUploaded(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Body() dto: MarkAttachmentUploadedDto,
+  ) {
+    const result = await this.chatAttachmentService.markAttachmentUploaded(conversationId, dto.attachmentId, req.user!.id)
+    return wrapSuccess(result)
+  }
+
+  @Get('attachments/:attachmentId/status')
+  async getAttachmentStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    const result = await this.chatAttachmentService.getAttachmentStatus(attachmentId, req.user!.id)
+    return wrapSuccess(result)
+  }
+
+  @Post('conversations/:conversationId/attachments')
+  @HttpCode(HttpStatus.CREATED)
+  async confirmAttachment(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Body() dto: ConfirmAttachmentDto,
+  ) {
+    const result = await this.chatService.sendRealtimeMessage(conversationId, req.user!.id, '', dto.attachmentId)
+    await this.chatGateway.emitConversationPreviews(result.previewByUserId)
+    await this.chatGateway.emitRealtimeMessage(
+      conversationId,
+      result.previewByUserId.map((entry) => entry.userId),
+      result.message,
+    )
+
+    return wrapSuccess({ message: result.message })
+  }
+
+  @Get('attachments/:attachmentId/download')
+  async getPresignedDownloadUrl(
+    @Req() req: AuthenticatedRequest,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    const result = await this.chatAttachmentService.generatePresignedDownloadUrl(attachmentId, req.user!.id)
+    return wrapSuccess(result)
+  }
+
+  @Get('conversations/:conversationId/attachments')
+  async listConversationAttachments(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Query('before') before?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.chatAttachmentService.listConversationAttachments(
+      conversationId,
+      req.user!.id,
+      before,
+      limit ? Number(limit) : undefined,
+    )
     return wrapSuccess(result)
   }
 

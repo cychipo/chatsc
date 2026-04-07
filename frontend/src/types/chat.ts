@@ -56,6 +56,28 @@ export type MessageDisplayState = 'ready' | 'decode_failed'
 
 export type SeenState = 'sent' | 'seen'
 
+export type ChatAttachment = {
+  attachmentId: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  isImage: boolean
+  uploaderId?: string
+  conversationId?: string
+  messageId?: string
+}
+
+export type DraftAttachmentStatus = 'pending' | 'uploading' | 'uploaded' | 'failed'
+
+export type DraftAttachment = {
+  localId: string
+  file: File
+  progress: number
+  status: DraftAttachmentStatus
+  attachmentId?: string
+  error?: string
+}
+
 export type Message = {
   _id: string
   conversationId: string
@@ -66,6 +88,7 @@ export type Message = {
   sentAt: string
   deliveryStatus: DeliveryStatus
   seenState?: SeenState
+  attachment?: ChatAttachment
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
@@ -80,6 +103,7 @@ export type RealtimeMessage = {
   content: string
   sentAt: string
   seenState?: SeenState
+  attachment?: ChatAttachment
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState

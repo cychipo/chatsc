@@ -13,6 +13,11 @@ export type BackendEnv = {
   PROCESSOR_REMOTE_TIMEOUT_MS: number
   CHAT_REVERSE_ENCRYPTION_ENABLED: boolean
   CHAT_REVERSE_ENCRYPTION_SHARED_KEY: string
+  R2_ACCOUNT_ID: string
+  R2_ACCESS_KEY_ID: string
+  R2_SECRET_ACCESS_KEY: string
+  R2_BUCKET_NAME: string
+  R2_PUBLIC_URL: string
 }
 
 export const backendEnv = (): BackendEnv => {
@@ -42,6 +47,11 @@ export const backendEnv = (): BackendEnv => {
     ),
     CHAT_REVERSE_ENCRYPTION_ENABLED: process.env.CHAT_REVERSE_ENCRYPTION_ENABLED === 'true',
     CHAT_REVERSE_ENCRYPTION_SHARED_KEY: process.env.CHAT_REVERSE_ENCRYPTION_SHARED_KEY ?? '',
+    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID ?? '',
+    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID ?? '',
+    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY ?? '',
+    R2_BUCKET_NAME: process.env.R2_BUCKET_NAME ?? '',
+    R2_PUBLIC_URL: process.env.R2_PUBLIC_URL ?? '',
   }
 
   if (env.AUTH_LOCAL_ENABLED || env.CHAT_REVERSE_ENCRYPTION_ENABLED) {
