@@ -15,7 +15,7 @@ import {
 import { AccessTokenAuthGuard } from '../auth/guards/access-token-auth.guard'
 import { SessionUser } from '../auth/types/auth-session'
 import { ChatService } from './chat.service'
-import { CreateConversationDto, AddMemberDto, GetMessagesQueryDto, MarkConversationReadDto } from './dto/chat.dto'
+import { CreateConversationDto, AddMemberDto, GetMessagesQueryDto, MarkConversationReadDto, SearchMessagesQueryDto } from './dto/chat.dto'
 import { requireActiveParticipant, requireAdminOrOwner } from './utils/participant-access.util'
 
 type AuthenticatedRequest = Request & {
@@ -82,6 +82,18 @@ export class ChatController {
     await requireActiveParticipant(this.chatService, conversationId, userId)
     const limit = query.limit ? Math.min(Number(query.limit), 50) : 10
     const messages = await this.chatService.getMessages(conversationId, query.before, limit)
+    return wrapSuccess(messages)
+  }
+
+  @Get('conversations/:conversationId/messages/search')
+  async searchMessages(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Query() query: SearchMessagesQueryDto,
+  ): Promise<ChatApiResponse<Awaited<ReturnType<ChatService['searchMessages']>>>> {
+    const userId = req.user!.id
+    await requireActiveParticipant(this.chatService, conversationId, userId)
+    const messages = await this.chatService.searchMessages(conversationId, query.q ?? '')
     return wrapSuccess(messages)
   }
 

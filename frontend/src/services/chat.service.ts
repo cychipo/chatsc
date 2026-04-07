@@ -8,6 +8,7 @@ import {
   AddMemberRequest,
   GetMessagesQuery,
   MarkConversationReadResponse,
+  MessageSearchResult,
   RealtimeMessage,
 } from '../types/chat'
 
@@ -48,6 +49,8 @@ export function mapRealtimeMessage(message: RealtimeMessage): Message {
     _id: message.messageId,
     conversationId: message.conversationId,
     senderId: message.senderId,
+    senderDisplayName: message.senderDisplayName,
+    senderAvatarUrl: message.senderAvatarUrl,
     content: message.content,
     sentAt: message.sentAt,
     deliveryStatus: 'sent',
@@ -91,6 +94,16 @@ export async function markConversationRead(conversationId: string) {
   const { data } = await http.post<ApiResponse<MarkConversationReadResponse>>(
     `/chat/conversations/${conversationId}/read`,
     { conversationId },
+  )
+  return unwrap(data)
+}
+
+export async function searchMessages(conversationId: string, query: string) {
+  const { data } = await http.get<ApiResponse<MessageSearchResult[]>>(
+    `/chat/conversations/${conversationId}/messages/search`,
+    {
+      params: { q: query },
+    },
   )
   return unwrap(data)
 }

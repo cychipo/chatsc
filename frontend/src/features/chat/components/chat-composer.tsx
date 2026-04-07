@@ -24,7 +24,7 @@ export function ChatComposer({ value, onChange, onSend, disabled, loading, conne
   }
 
   return (
-    <div style={styles.wrapper}>
+    <div style={styles.wrapper} data-testid="chat-composer">
       <Button type="text" shape="circle" icon={<Plus size={16} />} disabled={disabled} style={styles.iconButton} />
       <textarea
         value={value}

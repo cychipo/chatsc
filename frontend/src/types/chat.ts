@@ -60,6 +60,8 @@ export type Message = {
   _id: string
   conversationId: string
   senderId: string
+  senderDisplayName?: string
+  senderAvatarUrl?: string
   content: string
   sentAt: string
   deliveryStatus: DeliveryStatus
@@ -73,10 +75,25 @@ export type RealtimeMessage = {
   messageId: string
   conversationId: string
   senderId: string
+  senderDisplayName?: string
+  senderAvatarUrl?: string
   content: string
   sentAt: string
   seenState?: SeenState
   isTailOfSenderGroup?: boolean
+  decodeErrorCode?: string
+  displayState?: MessageDisplayState
+}
+
+export type MessageSearchResult = {
+  messageId: string
+  conversationId: string
+  senderId: string
+  senderDisplayName?: string
+  senderAvatarUrl?: string
+  content: string
+  encryptedContent?: string
+  sentAt: string
   decodeErrorCode?: string
   displayState?: MessageDisplayState
 }

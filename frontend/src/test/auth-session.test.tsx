@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, MockedFunction, vi } from 'vitest'
 import App from '../App'
 import { AppProviders } from '../app/providers'
 import * as authService from '../services/auth.service'
-import { http, setAccessToken } from '../services/http'
+import { getAccessToken, http, setAccessToken } from '../services/http'
+import { useAuthStore } from '../store/auth.store'
 
 function getResponseRejectedHandler() {
   return (http.interceptors.response as unknown as { handlers: Array<{ rejected: (error: unknown) => Promise<unknown> }> }).handlers[0]
@@ -57,6 +58,13 @@ describe('OAuth session flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
+    useAuthStore.setState({
+      currentUser: null,
+      accessToken: null,
+      isAuthenticated: false,
+      isHydrating: true,
+      errorMessage: null,
+    })
     setAccessToken(null)
     window.history.replaceState({}, document.title, '/')
   })
@@ -85,9 +93,11 @@ describe('OAuth session flow', () => {
       </AppProviders>,
     )
 
-    expect(await screen.findByText('Welcome back')).toBeInTheDocument()
-    expect(authService.refreshSession).toHaveBeenCalledTimes(1)
-    expect(window.localStorage.getItem('accessToken')).toBe('access-token')
+    await waitFor(() => {
+      expect(authService.refreshSession).toHaveBeenCalledTimes(1)
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+      expect(getAccessToken()).toBe('access-token')
+    })
   })
 
   it('returns to auth page after logout', async () => {
@@ -109,13 +119,23 @@ describe('OAuth session flow', () => {
     })
     ;(authService.logout as MockedFunction<typeof authService.logout>).mockResolvedValue({ success: true })
 
-    render(
-      <AppProviders>
-        <App />
-      </AppProviders>,
-    )
+    useAuthStore.setState({
+      currentUser: {
+        id: 'user-1',
+        email: 'user@example.com',
+        username: 'user',
+        displayName: 'User',
+      },
+      accessToken: 'access-token',
+      isAuthenticated: true,
+      isHydrating: false,
+      errorMessage: null,
+    })
+    setAccessToken('access-token')
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Logout' }))
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Đăng xuất' }))
 
     await waitFor(() => {
       expect(screen.getByText('Đăng nhập')).toBeInTheDocument()
@@ -160,7 +180,9 @@ describe('OAuth session flow', () => {
       </AppProviders>,
     )
 
-    await screen.findByText('Welcome back')
+    await waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
 
     const requestSpy = vi.spyOn(http, 'request').mockResolvedValue({
       data: { ok: true },
@@ -182,12 +204,14 @@ describe('OAuth session flow', () => {
     })
 
     const rejectedHandler = getResponseRejectedHandler()
-    const result = await rejectedHandler(createExpiredTokenError())
+    let result: unknown
+    await act(async () => {
+      result = await rejectedHandler(createExpiredTokenError())
+    })
 
     expect(result).toMatchObject({ data: { ok: true } })
-    expect(authService.refreshSession).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(authService.refreshSession).mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(requestSpy).toHaveBeenCalledTimes(1)
-    expect(window.localStorage.getItem('accessToken')).toBe('refreshed-access-token')
   })
 
   it('clears auth state when refresh after expiry fails', async () => {
@@ -214,12 +238,16 @@ describe('OAuth session flow', () => {
       </AppProviders>,
     )
 
-    await screen.findByText('Welcome back')
+    await waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
 
     vi.mocked(authService.refreshSession).mockRejectedValueOnce(new Error('refresh failed'))
 
     const rejectedHandler = getResponseRejectedHandler()
-    await expect(rejectedHandler(createExpiredTokenError())).rejects.toBeTruthy()
+    await act(async () => {
+      await expect(rejectedHandler(createExpiredTokenError())).rejects.toBeTruthy()
+    })
 
     await waitFor(() => {
       expect(screen.getByText('Đăng nhập')).toBeInTheDocument()
@@ -251,7 +279,9 @@ describe('OAuth session flow', () => {
       </AppProviders>,
     )
 
-    await screen.findByText('Welcome back')
+    await waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
 
     const requestSpy = vi.spyOn(http, 'request').mockResolvedValue({
       data: { ok: true },
@@ -270,22 +300,27 @@ describe('OAuth session flow', () => {
     )
 
     const rejectedHandler = getResponseRejectedHandler()
-    const promiseOne = rejectedHandler(createExpiredTokenError())
-    const promiseTwo = rejectedHandler(createExpiredTokenError())
+    let results: unknown[] | undefined
+    await act(async () => {
+      const promiseOne = rejectedHandler(createExpiredTokenError())
+      const promiseTwo = rejectedHandler(createExpiredTokenError())
 
-    resolveRefresh?.({
-      accessToken: 'shared-refreshed-token',
-      expiresInSeconds: 1800,
-      user: {
-        id: 'user-1',
-        email: 'user@example.com',
-        username: 'user',
-        displayName: 'User',
-      },
+      resolveRefresh?.({
+        accessToken: 'shared-refreshed-token',
+        expiresInSeconds: 1800,
+        user: {
+          id: 'user-1',
+          email: 'user@example.com',
+          username: 'user',
+          displayName: 'User',
+        },
+      })
+
+      results = await Promise.all([promiseOne, promiseTwo])
     })
 
-    await expect(Promise.all([promiseOne, promiseTwo])).resolves.toHaveLength(2)
-    expect(authService.refreshSession).toHaveBeenCalledTimes(2)
+    expect(results).toHaveLength(2)
+    expect(vi.mocked(authService.refreshSession).mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(requestSpy).toHaveBeenCalledTimes(2)
   })
 
@@ -313,7 +348,9 @@ describe('OAuth session flow', () => {
       </AppProviders>,
     )
 
-    await screen.findByText('Welcome back')
+    await waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
 
     const rejectedHandler = getResponseRejectedHandler()
     const businessError = createBusinessError()

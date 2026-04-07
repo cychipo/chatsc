@@ -3,6 +3,7 @@ import { beforeEach, vi } from 'vitest'
 import App from '../App'
 import { AppProviders } from '../app/providers'
 import * as authService from '../services/auth.service'
+import { useAuthStore } from '../store/auth.store'
 
 vi.mock('../services/auth.service', async () => {
   const actual = await vi.importActual<typeof import('../services/auth.service')>('../services/auth.service')
@@ -18,6 +19,13 @@ describe('Authenticated profile summary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
+    useAuthStore.setState({
+      currentUser: null,
+      accessToken: null,
+      isAuthenticated: false,
+      isHydrating: true,
+      errorMessage: null,
+    })
   })
 
   it('shows display name, email, and username in the protected area', async () => {
@@ -47,7 +55,7 @@ describe('Authenticated profile summary', () => {
     )
 
     expect(await screen.findByText('ABC User')).toBeInTheDocument()
-    expect(screen.getByText('abc.123@gmail.com')).toBeInTheDocument()
-    expect(screen.getByText('@abc.123')).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('abc.123@gmail.com'))).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('@abc.123'))).toBeInTheDocument()
   })
 })

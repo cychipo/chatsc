@@ -1,20 +1,34 @@
 import { Avatar, Typography } from 'antd'
-import { UserRound } from 'lucide-react'
 import type { Message, MembershipEvent } from '../../../types/chat'
 
 type MessageBubbleProps = {
   message: Message
   isMine: boolean
   authorName: string
+  authorAvatarUrl?: string
+  anchorId?: string
+  highlighted?: boolean
 }
 
-export function MessageBubble({ message, isMine, authorName }: MessageBubbleProps) {
+function buildAvatarFallbackLabel(authorName: string) {
+  return authorName.trim().charAt(0).toUpperCase() || 'U'
+}
+
+export function MessageBubble({ message, isMine, authorName, authorAvatarUrl, anchorId, highlighted = false }: MessageBubbleProps) {
   return (
-    <article style={{ ...styles.wrapper, justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+    <article
+      id={anchorId}
+      style={{
+        ...styles.wrapper,
+        justifyContent: isMine ? 'flex-end' : 'flex-start',
+        ...(highlighted ? styles.wrapperHighlighted : null),
+      }}
+      data-testid={isMine ? 'message-bubble-mine' : 'message-bubble-theirs'}
+    >
       <div style={{ ...styles.row, flexDirection: isMine ? 'row-reverse' : 'row' }}>
         {!isMine ? (
-          <Avatar size={28} style={styles.theirAvatar}>
-            <UserRound size={13} />
+          <Avatar size={28} src={authorAvatarUrl} style={styles.theirAvatar}>
+            {buildAvatarFallbackLabel(authorName)}
           </Avatar>
         ) : null}
 
@@ -64,6 +78,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     width: '100%',
     marginBottom: 4,
+    scrollMarginTop: 16,
+  },
+  wrapperHighlighted: {
+    borderRadius: 22,
+    background: 'rgba(251, 191, 36, 0.18)',
+    boxShadow: '0 0 0 1px rgba(245, 158, 11, 0.22)',
+    transition: 'background 0.2s ease',
   },
   row: {
     display: 'flex',

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../services/chat.service', () => ({
@@ -18,28 +18,36 @@ vi.mock('../store/auth.store', () => ({
 describe('Chat direct thread', () => {
   it('renders conversation list', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     expect(screen.getByTestId('conversation-list')).toBeDefined()
   })
 
   it('renders message thread area', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     expect(screen.getByTestId('message-thread')).toBeDefined()
   })
 
   it('renders input composer', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     expect(screen.getByTestId('chat-composer')).toBeDefined()
   })
 
   it('distinguishes own messages from others', async () => {
     const { ChatPage } = await import('../features/chat/chat.page')
-    render(<ChatPage />)
+    await act(async () => {
+      render(<ChatPage />)
+    })
 
     const ownMessages = screen.queryAllByTestId('message-bubble-mine')
     const otherMessages = screen.queryAllByTestId('message-bubble-theirs')
