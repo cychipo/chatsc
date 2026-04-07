@@ -3,15 +3,37 @@ services:
     image: mongo:7
     container_name: chatsc-mongo
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    ports:
+      - "5635:27017"
     volumes:
       - mongo-data:/data/db
       - mongo-data-config:/data/configdb
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD", "mongosh", "--host", "localhost", "--port", "27017", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  mongo-bootstrap:
+    image: mongo:7
+    container_name: chatsc-mongo-bootstrap
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    network_mode: "service:mongo"
+    environment:
+      MONGO_HOST: localhost
+      MONGO_PORT: "27017"
+    volumes:
+      - ./scripts/mongo-bootstrap-root.sh:/scripts/mongo-bootstrap-root.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/mongo-bootstrap-root.sh"]
 
   backend:
     build:
@@ -20,16 +42,14 @@ services:
     container_name: chatsc-backend
     restart: unless-stopped
     depends_on:
-      mongo:
-        condition: service_healthy
+      mongo-bootstrap:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
       PORT: "5634"
-      MONGODB_URI: mongodb://mongo:27017/chatsc
-      FRONTEND_APP_URL: http://localhost:5734
-    ports:
-      - "5634:5634"
+      MONGODB_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/chatsc?authSource=admin
+      FRONTEND_APP_URL: https://chatsc.fayedark.com
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:5634/api/health"]
       interval: 15s
@@ -42,7 +62,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5634/api}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: chatsc-frontend
     restart: unless-stopped
     depends_on:
