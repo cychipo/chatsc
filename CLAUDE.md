@@ -22,6 +22,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-08
 - MongoDB cho conversation/message persistence; browser runtime state cho sidebar toggle và search popup (012-chat-ui-controls)
 - TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, @aws-sdk/client-s3 (R2/S3-compatible), Vitest, React Testing Library (013-chat-file-upload)
 - MongoDB cho file attachment metadata; Cloudflare R2 cho file binary; browser runtime state cho image viewer (013-chat-file-upload)
+- TypeScript 5.x + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Socket.IO, @google/generative-ai SDK (014-gemini-ai-chat)
+- MongoDB (conversation/message schemas đã có, thêm AIConfig schema mới) (014-gemini-ai-chat)
 
 - C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
 
@@ -41,7 +43,7 @@ tests/
 C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host: Follow standard conventions
 
 ## Recent Changes
+- 014-gemini-ai-chat: Added TypeScript 5.x + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Socket.IO, @google/generative-ai SDK
 - 013-chat-file-upload: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, @aws-sdk/client-s3 (R2/S3-compatible), Vitest, React Testing Library
 - 012-chat-ui-controls: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Lucide React, Vitest, React Testing Library
-- 010-message-presence-status: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, Socket.IO, React 18, Zustand 5, Axios 1.12, Ant Design 5
 

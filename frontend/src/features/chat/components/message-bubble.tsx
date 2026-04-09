@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Avatar, Image, Typography } from 'antd'
+import { Avatar, Image, Tag, Typography } from 'antd'
 import type { Message, MembershipEvent, ChatAttachment } from '../../../types/chat'
 import { FileCard } from './file-card'
+import { MessageModeration } from './message-moderation'
 
 type MessageBubbleProps = {
   message: Message
@@ -78,15 +79,22 @@ export function MessageBubble({
         <div style={{ ...styles.contentWrap, alignItems: isMine ? 'flex-end' : 'flex-start' }}>
           {!isMine ? (
             <div style={styles.meta}>
-              <strong style={styles.author}>{authorName}</strong>
+              <strong style={styles.author}>{message.isAIBotMessage ? 'ChatAI' : authorName}</strong>
               <span style={styles.time}>{new Date(message.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           ) : null}
 
-          <div style={{ ...styles.bubble, ...(isMine ? styles.outgoing : styles.incoming) }}>
-            {message.content.trim().length > 0 ? (
-              <Typography.Paragraph style={styles.content as never}>{message.content}</Typography.Paragraph>
+          <div style={{ ...styles.bubble, ...(message.isAIBotMessage ? styles.aiBubble : isMine ? styles.outgoing : styles.incoming), ...(message.isAICommand ? styles.aiCommandBubble : null) }}>
+            {message.isAICommand ? (
+              <Tag color="gold" style={styles.commandTag}>
+                Lệnh AI
+              </Tag>
             ) : null}
+            {message.content.trim().length > 0 ? (
+              <Typography.Paragraph style={{ ...styles.content, ...(message.isAICommand ? styles.aiCommandContent : null) } as never}>{message.content}</Typography.Paragraph>
+            ) : null}
+
+            <MessageModeration moderationResult={message.moderationResult} />
 
             {attachment?.isImage ? (
               <button
@@ -194,11 +202,28 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottomRightRadius: 8,
     boxShadow: '0 18px 38px rgba(194, 65, 12, 0.14)',
   },
+  aiBubble: {
+    background: '#fff7ed',
+    color: '#7c2d12',
+    border: '1px solid rgba(194, 65, 12, 0.16)',
+    boxShadow: '0 12px 24px rgba(194, 65, 12, 0.08)',
+  },
+  aiCommandBubble: {
+    border: '1px dashed rgba(245, 158, 11, 0.5)',
+  },
+  commandTag: {
+    marginInlineEnd: 0,
+    width: 'fit-content',
+    fontSize: 11,
+  },
   content: {
     margin: 0,
     color: 'inherit',
     lineHeight: 1.55,
     fontSize: 13,
+  },
+  aiCommandContent: {
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   },
   imageButton: {
     border: 'none',

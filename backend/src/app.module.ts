@@ -6,6 +6,7 @@ import { createMongooseConfig } from './database/mongoose.config'
 import { HealthModule } from './modules/health/health.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { ChatModule } from './modules/chat/chat.module'
+import { AiModule } from './modules/ai/ai.module'
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ChatModule } from './modules/chat/chat.module'
     HealthModule,
     AuthModule,
     ChatModule,
+    AiModule,
   ],
 })
 export class AppModule {}

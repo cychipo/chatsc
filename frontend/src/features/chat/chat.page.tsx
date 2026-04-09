@@ -42,6 +42,14 @@ import { ChatComposer } from "./components/chat-composer";
 import { ConversationList } from "./components/conversation-list";
 import { ImageViewer } from "./components/image-viewer";
 import { EventBubble, MessageBubble } from "./components/message-bubble";
+import { SmartReplySuggestions } from "./components/smart-reply-suggestions";
+import { frontendAiService } from "../../services/ai.service";
+
+type SlashCommandOption = {
+  command: string;
+  label: string;
+  description: string;
+};
 
 type ChatState = {
   conversations: Conversation[];
@@ -54,6 +62,13 @@ type ChatState = {
   draftAttachment: DraftAttachment | null;
   hasMoreMessages: boolean;
   typingByConversationId: Record<string, TypingPresenceUpdate | undefined>;
+  aiSuggestions: string[];
+  loadingAiSuggestions: boolean;
+  aiUnavailable: boolean;
+  aiEnabled: boolean;
+  waitingForAiConversationId: string | null;
+  slashCommandsVisible: boolean;
+  slashCommandQuery: string;
 };
 
 type ConversationContextMenuState = {
@@ -69,6 +84,14 @@ type ImageViewerState = {
   scale: number;
   loading: boolean;
 };
+
+const SLASH_COMMANDS: SlashCommandOption[] = [
+  {
+    command: '/ai',
+    label: 'ChatAI',
+    description: 'Hỏi AI trong đoạn chat hiện tại',
+  },
+];
 
 const SELECTED_CONVERSATION_PARAM = "conversationId";
 
@@ -148,6 +171,13 @@ export function ChatPage() {
     draftAttachment: null,
     hasMoreMessages: true,
     typingByConversationId: {},
+    aiSuggestions: [],
+    loadingAiSuggestions: false,
+    aiUnavailable: false,
+    aiEnabled: true,
+    waitingForAiConversationId: null,
+    slashCommandsVisible: false,
+    slashCommandQuery: '',
   });
   const [inputValue, setInputValue] = useState("");
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
@@ -252,6 +282,10 @@ export function ChatPage() {
       messages: [],
       membershipEvents: [],
       hasMoreMessages: true,
+      waitingForAiConversationId:
+        prev.waitingForAiConversationId === conversationId
+          ? prev.waitingForAiConversationId
+          : null,
     }));
 
     try {
@@ -321,6 +355,10 @@ export function ChatPage() {
             prev.selectedConversationId === message.conversationId
               ? upsertMessage(prev.messages, message)
               : prev.messages,
+          waitingForAiConversationId:
+            message.isAIBotMessage && prev.waitingForAiConversationId === message.conversationId
+              ? null
+              : prev.waitingForAiConversationId,
         };
       });
 
@@ -503,11 +541,13 @@ export function ChatPage() {
   useEffect(() => {
     if (!isAuthenticated) {
       chatSocketService.disconnect();
+      frontendAiService.disconnect();
       setConnectionState("disconnected");
       return;
     }
 
     chatSocketService.connect();
+    frontendAiService.connect();
 
     const unsubscribeConnection = chatSocketService.onConnectionState(
       (nextState) => {
@@ -521,6 +561,23 @@ export function ChatPage() {
     const unsubscribeRead = chatSocketService.onRead(handleConversationRead);
     const unsubscribeTyping = chatSocketService.onTyping(handleTypingPresence);
     const unsubscribeError = chatSocketService.onError(handleSocketError);
+    const unsubscribeModeration = chatSocketService.onModerationResult(({ conversationId, moderationResult }) => {
+      setState((prev) => ({
+        ...prev,
+        messages: prev.messages.map((message) => message._id === moderationResult.messageId && message.conversationId === conversationId
+          ? { ...message, moderationResult }
+          : message),
+      }));
+    });
+    const unsubscribeAiError = frontendAiService.onError((error) => {
+      if (error.code === 'DISABLED') {
+        return;
+      }
+
+      if (error.code === 'RATE_LIMITED' || error.code === 'TIMEOUT' || error.code === 'SERVICE_UNAVAILABLE') {
+        setState((prev) => ({ ...prev, aiUnavailable: true }));
+      }
+    });
 
     return () => {
       unsubscribeConnection();
@@ -529,6 +586,8 @@ export function ChatPage() {
       unsubscribeRead();
       unsubscribeTyping();
       unsubscribeError();
+      unsubscribeModeration();
+      unsubscribeAiError();
     };
   }, [
     handleConversationRead,
@@ -779,6 +838,30 @@ export function ChatPage() {
     }));
   }, [state.selectedConversationId, state.sendingMessage]);
 
+  const filteredSlashCommands = useMemo(() => {
+    const query = state.slashCommandQuery.trim().toLowerCase();
+    if (!state.slashCommandsVisible) {
+      return [];
+    }
+
+    if (!query) {
+      return SLASH_COMMANDS;
+    }
+
+    return SLASH_COMMANDS.filter((item) =>
+      item.command.toLowerCase().includes(query) || item.label.toLowerCase().includes(query),
+    );
+  }, [state.slashCommandQuery, state.slashCommandsVisible]);
+
+  const handleSelectSlashCommand = useCallback((command: string) => {
+    setInputValue(`${command} `);
+    setState((prev) => ({
+      ...prev,
+      slashCommandsVisible: false,
+      slashCommandQuery: '',
+    }));
+  }, []);
+
   const handleSend = async () => {
     if (!inputValue.trim() && !state.draftAttachment) {
       return;
@@ -792,7 +875,14 @@ export function ChatPage() {
       return;
     }
 
-    setState((prev) => ({ ...prev, sendingMessage: true }));
+    const trimmedInputValue = inputValue.trim();
+    const shouldWaitForAi = state.aiEnabled && trimmedInputValue.startsWith('/ai');
+
+    setState((prev) => ({
+      ...prev,
+      sendingMessage: true,
+      waitingForAiConversationId: shouldWaitForAi ? state.selectedConversationId : prev.waitingForAiConversationId,
+    }));
 
     try {
       let attachmentId: string | undefined
@@ -863,6 +953,10 @@ export function ChatPage() {
       setState((prev) => ({
         ...prev,
         sendingMessage: false,
+        waitingForAiConversationId:
+          prev.waitingForAiConversationId === state.selectedConversationId
+            ? null
+            : prev.waitingForAiConversationId,
         draftAttachment: prev.draftAttachment
           ? {
             ...prev.draftAttachment,
@@ -1036,9 +1130,10 @@ export function ChatPage() {
           color: palette.text,
           display: "grid",
           placeItems: "center",
+          overflow: "hidden",
         }}
       >
-      <div style={{ width: "100%", paddingInline: 24 }}>
+      <div style={{ width: "100%", height: "100vh", paddingInline: 24, overflow: "hidden" }}>
         <main
           style={styles.workspaceSimple}
         >
@@ -1132,6 +1227,11 @@ export function ChatPage() {
                         {headerSubtitle}
                       </Typography.Text>
                     ) : null}
+                    {state.aiEnabled && state.aiUnavailable ? (
+                      <Typography.Text style={{ color: '#c2410c', fontSize: 12 } as never}>
+                        AI tạm thời không khả dụng
+                      </Typography.Text>
+                    ) : null}
                   </div>
                 </div>
                 <div style={styles.heroActions}>
@@ -1141,6 +1241,19 @@ export function ChatPage() {
                     icon={<Search size={16} />}
                     onClick={handleOpenMessageSearch}
                   />
+                  <Button
+                    type={state.aiEnabled ? "default" : "primary"}
+                    size="small"
+                    onClick={() => setState((prev) => ({
+                      ...prev,
+                      aiEnabled: !prev.aiEnabled,
+                      aiUnavailable: prev.aiEnabled ? false : prev.aiUnavailable,
+                      aiSuggestions: !prev.aiEnabled ? prev.aiSuggestions : [],
+                      loadingAiSuggestions: false,
+                    }))}
+                  >
+                    {state.aiEnabled ? 'Tắt AI phiên này' : 'Bật AI phiên này'}
+                  </Button>
                   <Button
                     type="text"
                     shape="circle"
@@ -1211,6 +1324,23 @@ export function ChatPage() {
                           </div>
                         </div>
                       ) : null}
+                      {state.waitingForAiConversationId === selectedConversation._id ? (
+                        <div style={styles.aiWaitingRow}>
+                          <Avatar size={28} style={styles.aiWaitingAvatar}>
+                            A
+                          </Avatar>
+                          <div style={styles.aiWaitingBubble}>
+                            <Typography.Text style={styles.aiWaitingText as never}>
+                              ChatAI đang trả lời...
+                            </Typography.Text>
+                            <span style={styles.typingDots}>
+                              <span style={{ ...styles.typingDot, animationDelay: "0ms" }} />
+                              <span style={{ ...styles.typingDot, animationDelay: "180ms" }} />
+                              <span style={{ ...styles.typingDot, animationDelay: "360ms" }} />
+                            </span>
+                          </div>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </>
@@ -1229,10 +1359,40 @@ export function ChatPage() {
               )}
             </div>
 
+            {filteredSlashCommands.length > 0 ? (
+              <div style={styles.slashCommandPanel}>
+                {filteredSlashCommands.map((item) => (
+                  <button
+                    key={item.command}
+                    type="button"
+                    style={styles.slashCommandItem}
+                    onClick={() => handleSelectSlashCommand(item.command)}
+                  >
+                    <span style={styles.slashCommandName}>{item.command}</span>
+                    <span style={styles.slashCommandDescription}>{item.description}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <SmartReplySuggestions
+              suggestions={state.aiSuggestions}
+              loading={state.loadingAiSuggestions}
+              disabled={!state.selectedConversationId || !state.aiEnabled || state.aiUnavailable}
+              onSelect={(suggestion) => setInputValue(suggestion)}
+            />
+
             <ChatComposer
               value={inputValue}
               onChange={(value) => {
                 setInputValue(value);
+
+                const slashMatch = value.match(/^\/(\S*)?$/);
+                setState((prev) => ({
+                  ...prev,
+                  slashCommandsVisible: Boolean(slashMatch),
+                  slashCommandQuery: slashMatch?.[1] ?? '',
+                }));
 
                 if (
                   !state.selectedConversationId ||
@@ -1245,6 +1405,32 @@ export function ChatPage() {
                   state.selectedConversationId,
                   value.trim().length > 0,
                 );
+              }}
+              onFocus={() => {
+                if (!state.selectedConversationId || !state.aiEnabled || state.aiUnavailable) {
+                  return;
+                }
+
+                setState((prev) => ({ ...prev, loadingAiSuggestions: true }));
+                void frontendAiService.getSuggestions(state.selectedConversationId)
+                  .then((suggestions) => {
+                    setState((prev) => ({
+                      ...prev,
+                      aiSuggestions: suggestions,
+                      loadingAiSuggestions: false,
+                      aiUnavailable: false,
+                    }));
+                  })
+                  .catch((error: { code?: string } | undefined) => {
+                    setState((prev) => ({
+                      ...prev,
+                      aiSuggestions: [],
+                      loadingAiSuggestions: false,
+                      aiUnavailable: error?.code === 'RATE_LIMITED'
+                        || error?.code === 'TIMEOUT'
+                        || error?.code === 'SERVICE_UNAVAILABLE',
+                    }));
+                  });
               }}
               onSend={handleSend}
               onLeave={handleLeave}
@@ -1524,19 +1710,23 @@ const styles = {
     backdropFilter: "blur(18px)",
   }),
   workspaceSimple: {
-    minHeight: "calc(100vh - 66px)",
+    height: "calc(100vh - 66px)",
+    minHeight: 0,
     display: "grid",
     gridTemplateColumns: "360px minmax(0, 1fr)",
     gap: 20,
     alignItems: "stretch",
+    overflow: "hidden",
   } satisfies React.CSSProperties,
   sidebarSimple: {
     display: "grid",
-    gridTemplateRows: "auto auto 1fr auto",
+    gridTemplateRows: "auto auto minmax(0, 1fr) auto",
     gap: 18,
     alignContent: "start",
     borderRadius: 34,
     padding: 22,
+    minHeight: 0,
+    overflow: "hidden",
   } satisfies React.CSSProperties,
   profileBlock: {
     display: "flex",
@@ -1571,6 +1761,9 @@ const styles = {
     gap: 12,
     minHeight: 0,
     alignContent: "start",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    paddingRight: 4,
   } satisfies React.CSSProperties,
   sidebarLabel: {
     color: "#8d7168",
@@ -1596,6 +1789,7 @@ const styles = {
     borderRadius: 34,
     padding: 22,
     minHeight: 0,
+    overflow: "hidden",
   } satisfies React.CSSProperties,
   chatTopStack: {
     display: "grid",
@@ -1627,7 +1821,9 @@ const styles = {
     display: "grid",
     gap: 14,
     alignContent: "start",
-    overflow: "auto",
+    overflowY: "auto",
+    overflowX: "hidden",
+    overscrollBehavior: "contain",
     minHeight: 0,
     paddingRight: 8,
   } satisfies React.CSSProperties,
@@ -1649,6 +1845,34 @@ const styles = {
     color: "rgba(67, 20, 7, 0.55)",
     fontSize: 14,
     maxWidth: 360,
+  } satisfies React.CSSProperties,
+  slashCommandPanel: {
+    display: "grid",
+    gap: 8,
+    padding: 10,
+    borderRadius: 18,
+    background: "rgba(255, 252, 247, 0.96)",
+    border: "1px solid rgba(194, 65, 12, 0.12)",
+    boxShadow: "0 12px 24px rgba(194, 65, 12, 0.08)",
+  } satisfies React.CSSProperties,
+  slashCommandItem: {
+    border: "none",
+    background: "transparent",
+    display: "grid",
+    gap: 2,
+    textAlign: "left",
+    padding: "8px 10px",
+    borderRadius: 12,
+    cursor: "pointer",
+  } satisfies React.CSSProperties,
+  slashCommandName: {
+    color: "#9b2f00",
+    fontWeight: 700,
+    fontSize: 13,
+  } satisfies React.CSSProperties,
+  slashCommandDescription: {
+    color: "rgba(67, 20, 7, 0.55)",
+    fontSize: 12,
   } satisfies React.CSSProperties,
   dayBadge: {
     justifySelf: "center",
@@ -1762,6 +1986,33 @@ const styles = {
     borderRadius: 18,
     background: "#ffe2db",
     color: "#8d7168",
+  } satisfies React.CSSProperties,
+  aiWaitingRow: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 8,
+    maxWidth: "78%",
+  } satisfies React.CSSProperties,
+  aiWaitingAvatar: {
+    background: "#fff7ed",
+    color: "#c2410c",
+    fontWeight: 700,
+  } satisfies React.CSSProperties,
+  aiWaitingBubble: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 44,
+    padding: "0 14px",
+    borderRadius: 18,
+    background: "#fff7ed",
+    color: "#9a3412",
+    border: "1px solid rgba(194, 65, 12, 0.12)",
+  } satisfies React.CSSProperties,
+  aiWaitingText: {
+    color: "inherit",
+    fontSize: 13,
+    lineHeight: 1.4,
   } satisfies React.CSSProperties,
   typingDots: {
     display: "inline-flex",

@@ -31,6 +31,8 @@ type ReadListener = (payload: MarkConversationReadResponse) => void
 
 type TypingListener = (payload: TypingPresenceUpdate) => void
 
+type ModerationListener = (payload: { conversationId: string; moderationResult: RealtimeMessage['moderationResult'] & { messageId: string } }) => void
+
 type ErrorListener = (error: ChatSocketError) => void
 
 function resolveSocketUrl() {
@@ -53,6 +55,7 @@ class ChatSocketService {
   private connectionListeners = new Set<ConnectionListener>()
   private readListeners = new Set<ReadListener>()
   private typingListeners = new Set<TypingListener>()
+  private moderationListeners = new Set<ModerationListener>()
   private errorListeners = new Set<ErrorListener>()
 
   connect() {
@@ -120,6 +123,12 @@ class ChatSocketService {
       }
     })
 
+    this.socket.on('ai:moderation:result', (payload: { conversationId: string; moderationResult: RealtimeMessage['moderationResult'] & { messageId: string } }) => {
+      for (const listener of this.moderationListeners) {
+        listener(payload)
+      }
+    })
+
     this.socket.on('connection_status_changed', (payload: { state?: ChatConnectionState }) => {
       if (payload.state) {
         this.setConnectionState(payload.state)
@@ -166,6 +175,11 @@ class ChatSocketService {
   onTyping(listener: TypingListener) {
     this.typingListeners.add(listener)
     return () => this.typingListeners.delete(listener)
+  }
+
+  onModerationResult(listener: ModerationListener) {
+    this.moderationListeners.add(listener)
+    return () => this.moderationListeners.delete(listener)
   }
 
   onError(listener: ErrorListener) {
