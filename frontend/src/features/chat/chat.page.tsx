@@ -712,10 +712,15 @@ export function ChatPage() {
 
   const handleSocketError = useCallback((error: ChatSocketError) => {
     setState((prev) => ({ ...prev, sendingMessage: false }));
+
+    if (error.code === 'SOCKET_NOT_READY' && connectionState !== 'connected') {
+      return;
+    }
+
     if (error.message) {
       antdMessage.error(error.message);
     }
-  }, []);
+  }, [connectionState]);
 
   useEffect(() => {
     void loadConversations();
