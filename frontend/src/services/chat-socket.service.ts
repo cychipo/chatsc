@@ -225,19 +225,7 @@ class ChatSocketService {
   }
 
   private async emitWithAck<T>(event: string, payload: Record<string, unknown>) {
-    const socket = this.socket
-
-    if (!socket) {
-      const error = { code: 'SOCKET_NOT_READY', message: 'Realtime chat is not connected' }
-      this.emitError(error)
-      throw error
-    }
-
-    if (!socket.connected) {
-      const error = { code: 'SOCKET_NOT_READY', message: 'Realtime chat is not connected' }
-      this.emitError(error)
-      throw error
-    }
+    const socket = await this.waitForConnection()
 
     const response = await socket.timeout(5000).emitWithAck(event, payload) as AckResponse<T>
 
@@ -247,6 +235,59 @@ class ChatSocketService {
     }
 
     return response.data
+  }
+
+  private async waitForConnection() {
+    const socket = this.socket
+
+    if (!socket) {
+      const error = { code: 'SOCKET_NOT_READY', message: 'Realtime chat is not connected' }
+      this.emitError(error)
+      throw error
+    }
+
+    if (socket.connected) {
+      return socket
+    }
+
+    if (!socket.active) {
+      this.updateAuth()
+      socket.connect()
+    }
+
+    return await new Promise<Socket>((resolve, reject) => {
+      const handleConnect = () => {
+        cleanup()
+        resolve(socket)
+      }
+
+      const handleDisconnect = () => {
+        cleanup()
+        const error = { code: 'SOCKET_NOT_READY', message: 'Realtime chat is not connected' }
+        reject(error)
+      }
+
+      const handleConnectError = (error: Error & { data?: ChatSocketError }) => {
+        cleanup()
+        reject(error.data ?? { code: 'CONNECTION_ERROR', message: error.message })
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        cleanup()
+        reject({ code: 'SOCKET_NOT_READY', message: 'Realtime chat is not connected' })
+      }, 5000)
+
+      const cleanup = () => {
+        window.clearTimeout(timeoutId)
+        socket.off('connect', handleConnect)
+        socket.off('disconnect', handleDisconnect)
+        socket.off('connect_error', handleConnectError)
+      }
+
+      socket.on('connect', handleConnect)
+      socket.on('disconnect', handleDisconnect)
+      socket.on('connect_error', handleConnectError)
+    })
   }
 
   private emitError(error: ChatSocketError) {
