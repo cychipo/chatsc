@@ -71,8 +71,12 @@ export function MessageBubble({
     >
       <div style={{ ...styles.row, flexDirection: isMine ? 'row-reverse' : 'row' }}>
         {!isMine ? (
-          <Avatar size={28} src={authorAvatarUrl} style={styles.theirAvatar}>
-            {buildAvatarFallbackLabel(authorName)}
+          <Avatar
+            size={28}
+            src={message.isAIBotMessage ? undefined : authorAvatarUrl}
+            style={message.isAIBotMessage ? styles.aiAvatar : styles.theirAvatar}
+          >
+            {message.isAIBotMessage ? 'AI' : buildAvatarFallbackLabel(authorName)}
           </Avatar>
         ) : null}
 
@@ -278,5 +282,18 @@ const styles: Record<string, React.CSSProperties> = {
   theirAvatar: {
     background: '#ffffff',
     color: '#9b2f00',
+    flex: '0 0 28px',
+    minWidth: 28,
+    minHeight: 28,
+    alignSelf: 'flex-start',
+  },
+  aiAvatar: {
+    background: '#fff7ed',
+    color: '#c2410c',
+    border: '1px solid rgba(194, 65, 12, 0.18)',
+    flex: '0 0 28px',
+    minWidth: 28,
+    minHeight: 28,
+    alignSelf: 'flex-start',
   },
 }

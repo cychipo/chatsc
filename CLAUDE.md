@@ -1,6 +1,6 @@
 # chatsc Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-08
+Auto-generated from all feature plans. Last updated: 2026-04-09
 
 ## Active Technologies
 - TypeScript cho cả frontend và backend; Node.js LTS cho môi trường phát triển + NestJS, MongoDB, Mongoose, React, Vite, Ant Design, Zustand, Axios 1.12, Lucide, Yarn (004-chat-groups)
@@ -24,6 +24,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-08
 - MongoDB cho file attachment metadata; Cloudflare R2 cho file binary; browser runtime state cho image viewer (013-chat-file-upload)
 - TypeScript 5.x + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Socket.IO, @google/generative-ai SDK (014-gemini-ai-chat)
 - MongoDB (conversation/message schemas đã có, thêm AIConfig schema mới) (014-gemini-ai-chat)
+- TypeScript 5.x (frontend + backend) + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Socket.IO, Ant Design 5 (015-realtime-message-alerts)
+- MongoDB cho conversation/message/participant unread state; browser runtime state cho notification và tab title (015-realtime-message-alerts)
 
 - C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host, GNU build tools, Linux kernel module toolchain (001-socket-chat-kmod)
 
@@ -43,7 +45,7 @@ tests/
 C cho client, server và kernel module; môi trường phát triển Ubuntu/Linux host: Follow standard conventions
 
 ## Recent Changes
+- 015-realtime-message-alerts: Added TypeScript 5.x (frontend + backend) + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Socket.IO, Ant Design 5
 - 014-gemini-ai-chat: Added TypeScript 5.x + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Socket.IO, @google/generative-ai SDK
 - 013-chat-file-upload: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, @aws-sdk/client-s3 (R2/S3-compatible), Vitest, React Testing Library
-- 012-chat-ui-controls: Added TypeScript 5.x cho frontend và backend + NestJS 10, Mongoose 8, React 18, Vite 6, Zustand 5, Axios 1.12, Ant Design 5, Lucide React, Vitest, React Testing Library
 

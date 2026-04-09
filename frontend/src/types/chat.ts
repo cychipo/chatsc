@@ -145,6 +145,25 @@ export type ConversationPreviewUpdate = {
   hasUnread?: boolean
 }
 
+export type UnreadTitleVariant = 'default' | 'single-sender' | 'multi-sender'
+
+export type UnreadSummary = {
+  totalUnreadMessages: number
+  unreadConversationIds: string[]
+  unreadSourceCount: number
+  singleSenderName?: string
+  titleVariant: UnreadTitleVariant
+}
+
+export type InSessionNotificationItem = {
+  messageId: string
+  conversationId: string
+  senderId: string
+  senderDisplayName?: string
+  previewText: string
+  receivedAt: string
+}
+
 export type MembershipEventType = 'added' | 'joined' | 'left' | 'removed'
 
 export type MembershipEvent = {
