@@ -63,6 +63,8 @@ services:
       dockerfile: deploy/Dockerfile.frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_AI_ENABLED: ${VITE_AI_ENABLED:-true}
+        VITE_AI_SOCKET_NAMESPACE: ${VITE_AI_SOCKET_NAMESPACE:-/ai}
     container_name: chatsc-frontend
     restart: unless-stopped
     depends_on:

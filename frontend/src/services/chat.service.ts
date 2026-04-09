@@ -59,6 +59,9 @@ export function mapRealtimeMessage(message: RealtimeMessage): Message {
     isTailOfSenderGroup: message.isTailOfSenderGroup,
     decodeErrorCode: message.decodeErrorCode,
     displayState: message.displayState,
+    isAIBotMessage: message.isAIBotMessage,
+    isAICommand: message.isAICommand,
+    moderationResult: message.moderationResult,
   }
 }
 

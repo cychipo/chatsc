@@ -7,6 +7,23 @@ export type DeliveryStatus = 'sent' | 'failed'
 export type SeenState = 'sent' | 'seen'
 export type ReverseEncryptionState = 'legacy' | 'encrypted' | 'decode_failed'
 
+export class MessageModerationResult {
+  @Prop({ enum: ['positive', 'neutral', 'negative'], required: false })
+  sentiment?: 'positive' | 'neutral' | 'negative'
+
+  @Prop({ required: false })
+  sentimentScore?: number
+
+  @Prop({ required: false })
+  toxicityScore?: number
+
+  @Prop({ required: false })
+  isToxic?: boolean
+
+  @Prop({ required: false })
+  warningMessage?: string
+}
+
 export class MessageAttachment {
   @Prop({ type: Types.ObjectId, ref: 'ChatAttachment', required: true })
   attachmentId!: Types.ObjectId
@@ -52,6 +69,15 @@ export class Message {
 
   @Prop()
   decodeErrorCode?: string
+
+  @Prop({ default: false })
+  isAIBotMessage!: boolean
+
+  @Prop({ default: false })
+  isAICommand!: boolean
+
+  @Prop({ type: MessageModerationResult, required: false })
+  moderationResult?: MessageModerationResult
 
   @Prop({ type: MessageAttachment, required: false })
   attachment?: MessageAttachment

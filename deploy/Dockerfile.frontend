@@ -7,7 +7,11 @@ COPY frontend/package.json frontend/package.json
 RUN yarn install --frozen-lockfile
 COPY frontend frontend
 ARG VITE_API_BASE_URL=http://localhost:5634/api
+ARG VITE_AI_ENABLED=true
+ARG VITE_AI_SOCKET_NAMESPACE=/ai
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_AI_ENABLED=$VITE_AI_ENABLED
+ENV VITE_AI_SOCKET_NAMESPACE=$VITE_AI_SOCKET_NAMESPACE
 RUN yarn workspace frontend build
 
 FROM nginx:alpine

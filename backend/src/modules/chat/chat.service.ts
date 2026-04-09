@@ -39,6 +39,14 @@ export type ChatAttachmentPayload = {
   messageId?: string
 }
 
+export type MessageModerationPayload = {
+  sentiment?: 'positive' | 'neutral' | 'negative'
+  sentimentScore?: number
+  toxicityScore?: number
+  isToxic?: boolean
+  warningMessage?: string
+}
+
 export type RealtimeMessagePayload = {
   messageId: string
   conversationId: string
@@ -52,6 +60,9 @@ export type RealtimeMessagePayload = {
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
+  isAIBotMessage?: boolean
+  isAICommand?: boolean
+  moderationResult?: MessageModerationPayload
 }
 
 export type ConversationPreviewPayload = {
@@ -84,6 +95,9 @@ export type ChatMessagePayload = {
   decodeErrorCode?: string
   displayState?: MessageDisplayState
   reverseEncryptionState?: ReverseEncryptionState
+  isAIBotMessage?: boolean
+  isAICommand?: boolean
+  moderationResult?: MessageModerationPayload
 }
 
 export type MessageSearchPayload = {
@@ -316,8 +330,16 @@ export class ChatService {
     return null
   }
 
-  async sendMessage(conversationId: string, senderId: string, content: string, attachmentIdValue?: string) {
+  async sendMessage(conversationId: string, senderId: string, content: string, attachmentIdValue?: string, isAICommand = false) {
     const trimmedContent = content.trim()
+
+    if (!trimmedContent && !attachmentIdValue) {
+      throw new BadRequestException({
+        code: 'EMPTY_MESSAGE',
+        message: 'Message content cannot be empty',
+      })
+    }
+
     const activeSender = await this.getRequiredActiveParticipant(conversationId, senderId)
     const restoredParticipants = await this.restoreDirectParticipantsIfNeeded(conversationId, senderId)
 
@@ -380,6 +402,7 @@ export class ChatService {
       deliveryStatus: 'sent',
       seenState: 'sent',
       decodeErrorCode: encrypted.decodeErrorCode,
+      isAICommand,
       attachment: attachmentDocument
         ? {
           attachmentId: attachmentDocument._id,
@@ -420,13 +443,52 @@ export class ChatService {
     }
   }
 
-  async sendRealtimeMessage(conversationId: string, senderId: string, content: string, attachmentIdValue?: string) {
-    const { message, restoredParticipants } = await this.sendMessage(conversationId, senderId, content, attachmentIdValue)
+  async sendRealtimeMessage(conversationId: string, senderId: string, content: string, attachmentIdValue?: string, isAICommand = false) {
+    const sendResult = attachmentIdValue
+      ? await this.sendMessage(conversationId, senderId, content, attachmentIdValue, isAICommand)
+      : isAICommand
+        ? await this.sendMessage(conversationId, senderId, content, undefined, true)
+        : await this.sendMessage(conversationId, senderId, content)
+
+    const { message, restoredParticipants } = sendResult
+
     return {
       message: await this.toRealtimeMessagePayload(message),
       previewByUserId: await this.buildConversationPreviewPayloads(conversationId),
       restoredParticipants,
     }
+  }
+
+  async sendAiBotMessage(conversationId: string, requesterId: string, content: string) {
+    const message = await this.messageModel.create({
+      conversationId: new Types.ObjectId(conversationId),
+      senderId: new Types.ObjectId(requesterId),
+      content,
+      reverseEncryptionState: 'legacy',
+      sentAt: new Date(),
+      deliveryStatus: 'sent',
+      seenState: 'sent',
+      isAIBotMessage: true,
+    })
+
+    await this.conversationModel.updateOne(
+      { _id: new Types.ObjectId(conversationId) },
+      { lastMessageAt: message.sentAt },
+    )
+
+    await this.incrementUnreadForOtherParticipants(conversationId, requesterId, message._id, message.sentAt)
+
+    return {
+      message: await this.toRealtimeMessagePayload(message),
+      previewByUserId: await this.buildConversationPreviewPayloads(conversationId),
+    }
+  }
+
+  async saveMessageModerationResult(messageId: string, moderationResult: MessageModerationPayload) {
+    await this.messageModel.updateOne(
+      { _id: new Types.ObjectId(messageId) },
+      { moderationResult },
+    )
   }
 
   async getMessages(conversationId: string, before?: string, limit = 10): Promise<ChatMessagePayload[]> {
@@ -455,6 +517,9 @@ export class ChatService {
             messageId: displayMessage._id,
           }),
           isTailOfSenderGroup: nextMessage ? nextMessage.senderId.toString() !== message.senderId.toString() : true,
+          isAIBotMessage: (message as { isAIBotMessage?: boolean }).isAIBotMessage,
+          isAICommand: (message as { isAICommand?: boolean }).isAICommand,
+          moderationResult: (message as { moderationResult?: MessageModerationPayload }).moderationResult,
         }
       }),
     )
@@ -719,11 +784,15 @@ export class ChatService {
 
       const senderPresentation = await this.buildSenderPresentation(message.senderId)
 
+      const isAIBotMessage = Boolean((message as { isAIBotMessage?: boolean }).isAIBotMessage)
+      const isAICommand = Boolean((message as { isAICommand?: boolean }).isAICommand)
+
       return {
         messageId: message._id.toString(),
         conversationId: message.conversationId.toString(),
         senderId: message.senderId.toString(),
-        ...senderPresentation,
+        senderDisplayName: isAIBotMessage ? 'ChatAI' : senderPresentation.senderDisplayName,
+        senderAvatarUrl: isAIBotMessage ? undefined : senderPresentation.senderAvatarUrl,
         content: display.content,
         sentAt: message.sentAt.toISOString(),
         seenState: message.seenState,
@@ -736,6 +805,9 @@ export class ChatService {
         isTailOfSenderGroup: true,
         decodeErrorCode: display.decodeErrorCode,
         displayState: display.displayState,
+        isAIBotMessage,
+        isAICommand,
+        moderationResult: (message as { moderationResult?: MessageModerationPayload }).moderationResult,
       }
     } catch (error) {
       const failureCode = error instanceof Error && 'code' in error && typeof error.code === 'string'
@@ -744,11 +816,15 @@ export class ChatService {
 
       const senderPresentation = await this.buildSenderPresentation(message.senderId)
 
+      const isAIBotMessage = Boolean((message as { isAIBotMessage?: boolean }).isAIBotMessage)
+      const isAICommand = Boolean((message as { isAICommand?: boolean }).isAICommand)
+
       return {
         messageId: message._id.toString(),
         conversationId: message.conversationId.toString(),
         senderId: message.senderId.toString(),
-        ...senderPresentation,
+        senderDisplayName: isAIBotMessage ? 'ChatAI' : senderPresentation.senderDisplayName,
+        senderAvatarUrl: isAIBotMessage ? undefined : senderPresentation.senderAvatarUrl,
         content: message.content,
         sentAt: message.sentAt.toISOString(),
         seenState: message.seenState,
@@ -761,6 +837,9 @@ export class ChatService {
         isTailOfSenderGroup: true,
         decodeErrorCode: failureCode,
         displayState: 'decode_failed' as const,
+        isAIBotMessage,
+        isAICommand,
+        moderationResult: (message as { moderationResult?: MessageModerationPayload }).moderationResult,
       }
     }
   }

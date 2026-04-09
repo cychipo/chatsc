@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { HydratedDocument } from 'mongoose'
+import { HydratedDocument, Types } from 'mongoose'
 
 export type UserDocument = HydratedDocument<User>
 
@@ -39,6 +39,9 @@ export class User {
 
   @Prop({ default: 'active' })
   status!: string
+
+  @Prop({ type: Types.ObjectId, ref: 'AiUserSettings' })
+  aiSettings?: Types.ObjectId
 
   @Prop({ type: LocalAuthMetadataSchema })
   localAuth?: LocalAuthMetadata

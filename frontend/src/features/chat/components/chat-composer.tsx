@@ -9,6 +9,7 @@ const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024
 type ChatComposerProps = {
   value: string
   onChange: (value: string) => void
+  onFocus?: () => void
   onSend: () => void
   onLeave?: () => void
   onSelectFile?: (file: File) => Promise<void> | void
@@ -22,6 +23,7 @@ type ChatComposerProps = {
 export function ChatComposer({
   value,
   onChange,
+  onFocus,
   onSend,
   onSelectFile,
   onRemoveDraftAttachment,
@@ -122,6 +124,7 @@ export function ChatComposer({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
         onKeyDown={handleKeyDown}
         placeholder="Nhập tin nhắn..."
         disabled={disabled || loading}

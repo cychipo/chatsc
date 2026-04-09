@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { AuthModule } from '../auth/auth.module'
+import { AiModule } from '../ai/ai.module'
 import { ChatController } from './chat.controller'
 import { ChatEncryptionService } from './chat-encryption.service'
 import { ChatGateway } from './chat.gateway'
@@ -15,6 +16,7 @@ import { ChatAttachmentService } from './chat-attachment.service'
 @Module({
   imports: [
     AuthModule,
+    forwardRef(() => AiModule),
     MongooseModule.forFeature([
       { name: Conversation.name, schema: ConversationSchema },
       { name: ConversationParticipant.name, schema: ConversationParticipantSchema },

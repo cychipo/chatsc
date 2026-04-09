@@ -78,6 +78,15 @@ export type DraftAttachment = {
   error?: string
 }
 
+export type MessageModerationResult = {
+  messageId: string
+  sentiment?: 'positive' | 'neutral' | 'negative'
+  sentimentScore?: number
+  toxicityScore?: number
+  isToxic?: boolean
+  warningMessage?: string
+}
+
 export type Message = {
   _id: string
   conversationId: string
@@ -92,6 +101,9 @@ export type Message = {
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
+  isAIBotMessage?: boolean
+  isAICommand?: boolean
+  moderationResult?: MessageModerationResult
 }
 
 export type RealtimeMessage = {
@@ -107,6 +119,9 @@ export type RealtimeMessage = {
   isTailOfSenderGroup?: boolean
   decodeErrorCode?: string
   displayState?: MessageDisplayState
+  isAIBotMessage?: boolean
+  isAICommand?: boolean
+  moderationResult?: MessageModerationResult
 }
 
 export type MessageSearchResult = {

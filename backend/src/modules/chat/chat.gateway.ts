@@ -10,6 +10,9 @@ import {
 } from '@nestjs/websockets'
 import { AuthService } from '../auth/auth.service'
 import { SessionUser } from '../auth/types/auth-session'
+import { AiChatbotService } from '../ai/ai-chatbot.service'
+import { AiConfigService } from '../ai/ai-config.service'
+import { AiModerationService } from '../ai/ai-moderation.service'
 import {
   ChatService,
   ConversationPreviewPayload,
@@ -80,6 +83,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   constructor(
     private readonly chatService: ChatService,
     private readonly authService: AuthService,
+    private readonly aiConfigService: AiConfigService,
+    private readonly aiChatbotService: AiChatbotService,
+    private readonly aiModerationService: AiModerationService,
   ) {}
 
   afterInit(server: Server) {
@@ -153,9 +159,46 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     try {
       const content = payload.content.trim()
-      const result = await this.chatService.sendRealtimeMessage(payload.conversationId, user.id, content, payload.attachmentId)
+      const isAICommand = this.aiChatbotService.shouldReply(content)
+      const result = await this.chatService.sendRealtimeMessage(payload.conversationId, user.id, content, payload.attachmentId, isAICommand)
       await this.emitConversationPreviews(result.previewByUserId)
       await this.emitRealtimeMessage(payload.conversationId, result.previewByUserId.map((entry) => entry.userId), result.message)
+
+      if (this.aiConfigService.isModerationEnabled() && content) {
+        void this.aiModerationService.analyzeMessage(result.message.messageId, content)
+          .then(async (moderationResult) => {
+            await this.chatService.saveMessageModerationResult(result.message.messageId, moderationResult)
+            this.server.to(getConversationRoom(payload.conversationId)).emit('ai:moderation:result', {
+              conversationId: payload.conversationId,
+              moderationResult: {
+                ...moderationResult,
+                messageId: result.message.messageId,
+              },
+            })
+            this.server.to(getUserRoom(user.id)).emit('ai:moderation:result', {
+              conversationId: payload.conversationId,
+              moderationResult: {
+                ...moderationResult,
+                messageId: result.message.messageId,
+              },
+            })
+          })
+          .catch(() => undefined)
+      }
+
+      if (this.aiConfigService.isChatbotEnabled() && this.aiChatbotService.shouldReply(content)) {
+        void this.aiChatbotService.generateResponse(payload.conversationId, content)
+          .then(async (aiContent) => {
+            if (!aiContent) {
+              return
+            }
+            const aiResult = await this.chatService.sendAiBotMessage(payload.conversationId, user.id, aiContent)
+            await this.emitConversationPreviews(aiResult.previewByUserId)
+            await this.emitRealtimeMessage(payload.conversationId, aiResult.previewByUserId.map((entry) => entry.userId), aiResult.message)
+          })
+          .catch(() => undefined)
+      }
+
       return { success: true, data: result.message }
     } catch (error) {
       return this.toErrorAck(error, payload.conversationId)

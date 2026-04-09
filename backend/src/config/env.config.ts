@@ -18,6 +18,15 @@ export type BackendEnv = {
   R2_SECRET_ACCESS_KEY: string
   R2_BUCKET_NAME: string
   R2_PUBLIC_URL: string
+  GEMINI_API_KEYS: string
+  GEMINI_MODELS: string
+  GEMINI_REQUEST_TIMEOUT_MS: number
+  GEMINI_MODERATION_TIMEOUT_MS: number
+  GEMINI_SUGGESTION_TIMEOUT_MS: number
+  GEMINI_MAX_CONTEXT_MESSAGES: number
+  AI_CHATBOT_ENABLED: boolean
+  AI_SUGGESTIONS_ENABLED: boolean
+  AI_MODERATION_ENABLED: boolean
 }
 
 export const backendEnv = (): BackendEnv => {
@@ -52,6 +61,15 @@ export const backendEnv = (): BackendEnv => {
     R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY ?? '',
     R2_BUCKET_NAME: process.env.R2_BUCKET_NAME ?? '',
     R2_PUBLIC_URL: process.env.R2_PUBLIC_URL ?? '',
+    GEMINI_API_KEYS: process.env.GEMINI_API_KEYS ?? '',
+    GEMINI_MODELS: process.env.GEMINI_MODELS ?? 'gemini-1.5-flash',
+    GEMINI_REQUEST_TIMEOUT_MS: Number(process.env.GEMINI_REQUEST_TIMEOUT_MS ?? 30000),
+    GEMINI_MODERATION_TIMEOUT_MS: Number(process.env.GEMINI_MODERATION_TIMEOUT_MS ?? 5000),
+    GEMINI_SUGGESTION_TIMEOUT_MS: Number(process.env.GEMINI_SUGGESTION_TIMEOUT_MS ?? 10000),
+    GEMINI_MAX_CONTEXT_MESSAGES: Number(process.env.GEMINI_MAX_CONTEXT_MESSAGES ?? 10),
+    AI_CHATBOT_ENABLED: process.env.AI_CHATBOT_ENABLED !== 'false',
+    AI_SUGGESTIONS_ENABLED: process.env.AI_SUGGESTIONS_ENABLED !== 'false',
+    AI_MODERATION_ENABLED: process.env.AI_MODERATION_ENABLED !== 'false',
   }
 
   if (env.AUTH_LOCAL_ENABLED || env.CHAT_REVERSE_ENCRYPTION_ENABLED) {
@@ -68,6 +86,19 @@ export const backendEnv = (): BackendEnv => {
 
   if (env.CHAT_REVERSE_ENCRYPTION_ENABLED && !env.CHAT_REVERSE_ENCRYPTION_SHARED_KEY) {
     throw new Error('CHAT_REVERSE_ENCRYPTION_SHARED_KEY is required when reverse encryption is enabled')
+  }
+
+  if (!Number.isFinite(env.GEMINI_REQUEST_TIMEOUT_MS) || env.GEMINI_REQUEST_TIMEOUT_MS <= 0) {
+    throw new Error('GEMINI_REQUEST_TIMEOUT_MS must be a positive number')
+  }
+  if (!Number.isFinite(env.GEMINI_MODERATION_TIMEOUT_MS) || env.GEMINI_MODERATION_TIMEOUT_MS <= 0) {
+    throw new Error('GEMINI_MODERATION_TIMEOUT_MS must be a positive number')
+  }
+  if (!Number.isFinite(env.GEMINI_SUGGESTION_TIMEOUT_MS) || env.GEMINI_SUGGESTION_TIMEOUT_MS <= 0) {
+    throw new Error('GEMINI_SUGGESTION_TIMEOUT_MS must be a positive number')
+  }
+  if (!Number.isFinite(env.GEMINI_MAX_CONTEXT_MESSAGES) || env.GEMINI_MAX_CONTEXT_MESSAGES <= 0) {
+    throw new Error('GEMINI_MAX_CONTEXT_MESSAGES must be a positive number')
   }
 
   return env
