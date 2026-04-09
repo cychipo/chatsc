@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Avatar, Button, Input, Modal, Spin, Typography, message as antdMessage } from "antd";
+import { Avatar, Button, Input, Modal, Spin, Typography, message as antdMessage, notification } from "antd";
 import { Search, Ellipsis, LogOut, Plus } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { searchUsers } from "../../services/auth.service";
@@ -37,6 +37,7 @@ import type {
   MessageSearchResult,
   RealtimeMessage,
   TypingPresenceUpdate,
+  UnreadSummary,
 } from "../../types/chat";
 import { ChatComposer } from "./components/chat-composer";
 import { ConversationList } from "./components/conversation-list";
@@ -100,6 +101,7 @@ const SLASH_COMMANDS: SlashCommandOption[] = [
 ];
 
 const SELECTED_CONVERSATION_PARAM = "conversationId";
+const FALLBACK_SENDER_NAME = "người dùng";
 
 function readSelectedConversationIdFromLocation(search: string) {
   const params = new URLSearchParams(search);
@@ -164,6 +166,104 @@ function updateConversationPreview(
   });
 }
 
+function resolveConversationSenderName(conversation: Conversation) {
+  const directPeerName = conversation.directPeer?.displayName?.trim();
+
+  if (directPeerName) {
+    return directPeerName;
+  }
+
+  const displayTitle = conversation.displayTitle?.trim();
+
+  if (displayTitle) {
+    return displayTitle;
+  }
+
+  const title = conversation.title?.trim();
+
+  if (title) {
+    return title;
+  }
+
+  return FALLBACK_SENDER_NAME;
+}
+
+function buildUnreadSummary(conversations: Conversation[]): UnreadSummary {
+  const unreadConversations = conversations.filter(
+    (conversation) => (conversation.unreadCount ?? 0) > 0,
+  );
+  const totalUnreadMessages = unreadConversations.reduce(
+    (total, conversation) => total + (conversation.unreadCount ?? 0),
+    0,
+  );
+
+  if (totalUnreadMessages === 0) {
+    return {
+      totalUnreadMessages: 0,
+      unreadConversationIds: [],
+      unreadSourceCount: 0,
+      titleVariant: 'default',
+    };
+  }
+
+  if (unreadConversations.length === 1) {
+    return {
+      totalUnreadMessages,
+      unreadConversationIds: unreadConversations.map((conversation) => conversation._id),
+      unreadSourceCount: 1,
+      singleSenderName: resolveConversationSenderName(unreadConversations[0]),
+      titleVariant: 'single-sender',
+    };
+  }
+
+  return {
+    totalUnreadMessages,
+    unreadConversationIds: unreadConversations.map((conversation) => conversation._id),
+    unreadSourceCount: unreadConversations.length,
+    titleVariant: 'multi-sender',
+  };
+}
+
+function formatUnreadTitle(summary: UnreadSummary, defaultTitle: string) {
+  if (summary.titleVariant === 'default' || summary.totalUnreadMessages === 0) {
+    return defaultTitle;
+  }
+
+  if (summary.titleVariant === 'single-sender' && summary.singleSenderName) {
+    return `Bạn có ${summary.totalUnreadMessages} tin nhắn mới từ ${summary.singleSenderName}`;
+  }
+
+  return `Bạn có ${summary.totalUnreadMessages} tin nhắn chưa đọc`;
+}
+
+async function ensureNotificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported' as const;
+  }
+
+  if (Notification.permission === 'default') {
+    return Notification.requestPermission();
+  }
+
+  return Notification.permission;
+}
+
+async function showBrowserNotification(message: RealtimeMessage) {
+  const permission = await ensureNotificationPermission();
+
+  if (permission !== 'granted') {
+    return;
+  }
+
+  const notification = new Notification(message.senderDisplayName ?? FALLBACK_SENDER_NAME, {
+    body: message.content.trim() || 'Bạn có tin nhắn mới',
+    icon: message.isAIBotMessage ? undefined : message.senderAvatarUrl,
+    tag: message.messageId,
+  });
+
+  window.setTimeout(() => notification.close(), 5000);
+}
+
 export function ChatPage() {
   const { currentUser, isAuthenticated, logout } = useAuthStore();
   const [state, setState] = useState<ChatState>({
@@ -214,6 +314,10 @@ export function ChatPage() {
     scale: 1,
     loading: false,
   });
+  const defaultDocumentTitleRef = useRef(document.title);
+  const shownNotificationIdsRef = useRef<Record<string, true>>({});
+  const notificationPermissionRequestedRef = useRef(false);
+  const pendingScrollToLatestMessageRef = useRef(false);
   const messageThreadRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const joinedConversationRef = useRef<string | null>(null);
@@ -239,6 +343,11 @@ export function ChatPage() {
         (item) => item._id === state.selectedConversationId,
       ) ?? null,
     [state.conversations, state.selectedConversationId],
+  );
+
+  const unreadSummary = useMemo(
+    () => buildUnreadSummary(state.conversations),
+    [state.conversations],
   );
 
   const combinedTimeline = useMemo(() => {
@@ -405,6 +514,13 @@ export function ChatPage() {
     (incomingMessage: RealtimeMessage) => {
       const message = mapRealtimeMessage(incomingMessage);
       let shouldReloadConversations = false;
+      const isCurrentUserMessage = incomingMessage.senderId === currentUser?.id;
+      const isActiveConversation = message.conversationId === state.selectedConversationId;
+      const shouldShowNotification = !isCurrentUserMessage
+        && !incomingMessage.isAIBotMessage
+        && !incomingMessage.isAICommand
+        && !shownNotificationIdsRef.current[incomingMessage.messageId]
+        && !isActiveConversation;
 
       setState((prev) => {
         const existingConversation = prev.conversations.find(
@@ -459,16 +575,25 @@ export function ChatPage() {
         void loadConversations();
       }
 
-      if (
-        message.conversationId === state.selectedConversationId
-        && (incomingMessage.senderId === currentUser?.id || shouldStickToBottomRef.current)
-      ) {
+      if (isActiveConversation && (isCurrentUserMessage || shouldStickToBottomRef.current)) {
         scrollToLatestMessage();
       }
 
-      if (incomingMessage.senderId === currentUser?.id) {
+      if (shouldShowNotification) {
+        shownNotificationIdsRef.current[incomingMessage.messageId] = true;
+        notification.open({
+          key: incomingMessage.messageId,
+          message: incomingMessage.senderDisplayName ?? FALLBACK_SENDER_NAME,
+          description: incomingMessage.content.trim() || "Bạn có tin nhắn mới",
+          placement: 'topRight',
+        });
+        void showBrowserNotification(incomingMessage);
+      }
+
+      if (isCurrentUserMessage) {
         setInputValue("");
         setState((prev) => ({ ...prev, sendingMessage: false, draftAttachment: null }));
+        pendingScrollToLatestMessageRef.current = true;
         window.requestAnimationFrame(() => {
           composerInputRef.current?.focus();
         });
@@ -642,7 +767,21 @@ export function ChatPage() {
   }, [state.selectedConversationId]);
 
   useEffect(() => {
+    document.title = formatUnreadTitle(
+      unreadSummary,
+      defaultDocumentTitleRef.current,
+    );
+
+    return () => {
+      document.title = defaultDocumentTitleRef.current;
+    };
+  }, [unreadSummary]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
+      document.title = defaultDocumentTitleRef.current;
+      shownNotificationIdsRef.current = {};
+      notificationPermissionRequestedRef.current = false;
       chatSocketService.disconnect();
       frontendAiService.disconnect();
       setConnectionState("disconnected");
@@ -820,7 +959,17 @@ export function ChatPage() {
   }, []);
 
   useEffect(() => {
+    if (!pendingScrollToLatestMessageRef.current) {
+      return;
+    }
+
+    pendingScrollToLatestMessageRef.current = false;
+    scrollToLatestMessage('auto');
+  }, [state.messages, scrollToLatestMessage]);
+
+  useEffect(() => {
     return () => {
+      document.title = defaultDocumentTitleRef.current;
       for (const timeoutId of Object.values(typingTimeoutsRef.current)) {
         if (timeoutId) {
           window.clearTimeout(timeoutId);
@@ -984,8 +1133,15 @@ export function ChatPage() {
       return;
     }
 
+    if (!notificationPermissionRequestedRef.current) {
+      notificationPermissionRequestedRef.current = true;
+      void ensureNotificationPermission();
+    }
+
     const trimmedInputValue = inputValue.trim();
     const shouldWaitForAi = state.aiEnabled && trimmedInputValue.startsWith('/ai');
+
+    pendingScrollToLatestMessageRef.current = true;
 
     setState((prev) => ({
       ...prev,
@@ -1415,9 +1571,11 @@ export function ChatPage() {
                                   "Người dùng")
                             }
                             authorAvatarUrl={
-                              item.message.senderId === currentUser?.id
-                                ? (item.message.senderAvatarUrl ?? currentUser?.avatarUrl)
-                                : item.message.senderAvatarUrl
+                              item.message.isAIBotMessage
+                                ? undefined
+                                : item.message.senderId === currentUser?.id
+                                  ? (item.message.senderAvatarUrl ?? currentUser?.avatarUrl)
+                                  : item.message.senderAvatarUrl
                             }
                           />
                         ),
