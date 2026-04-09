@@ -18,6 +18,7 @@ type ChatComposerProps = {
   disabled?: boolean
   loading?: boolean
   connectionState?: ChatConnectionState
+  inputRef?: React.RefObject<HTMLTextAreaElement>
 }
 
 export function ChatComposer({
@@ -31,6 +32,7 @@ export function ChatComposer({
   disabled,
   loading,
   connectionState,
+  inputRef,
 }: ChatComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -122,6 +124,7 @@ export function ChatComposer({
       ) : null}
       <Button type="text" shape="circle" icon={<Paperclip size={16} />} disabled={disabled || loading || !!draftAttachment} style={styles.iconButton} onClick={handleAttachmentClick} />
       <textarea
+        ref={inputRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onFocus={onFocus}

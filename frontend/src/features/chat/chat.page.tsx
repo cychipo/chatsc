@@ -51,6 +51,11 @@ type SlashCommandOption = {
   description: string;
 };
 
+type SuggestionCacheEntry = {
+  suggestions: string[];
+  baseMessageCount: number;
+};
+
 type ChatState = {
   conversations: Conversation[];
   selectedConversationId: string | null;
@@ -67,6 +72,7 @@ type ChatState = {
   aiUnavailable: boolean;
   aiEnabled: boolean;
   waitingForAiConversationId: string | null;
+  suggestionCacheByConversationId: Record<string, SuggestionCacheEntry | undefined>;
   slashCommandsVisible: boolean;
   slashCommandQuery: string;
 };
@@ -176,6 +182,7 @@ export function ChatPage() {
     aiUnavailable: false,
     aiEnabled: true,
     waitingForAiConversationId: null,
+    suggestionCacheByConversationId: {},
     slashCommandsVisible: false,
     slashCommandQuery: '',
   });
@@ -208,7 +215,9 @@ export function ChatPage() {
     loading: false,
   });
   const messageThreadRef = useRef<HTMLDivElement>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const joinedConversationRef = useRef<string | null>(null);
+  const shouldStickToBottomRef = useRef(true);
   const hasRestoredConversationFromUrlRef = useRef(false);
   const requestedConversationIdRef = useRef(
     readSelectedConversationIdFromLocation(window.location.search),
@@ -251,6 +260,21 @@ export function ChatPage() {
     );
   }, [selectedConversation?.type, state.membershipEvents, state.messages]);
 
+  const scrollToLatestMessage = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const container = messageThreadRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior,
+      });
+    });
+  }, []);
+
   const loadConversations = useCallback(async () => {
     try {
       const conversations = await listConversations();
@@ -274,19 +298,69 @@ export function ChatPage() {
     setHighlightedMessageId(null);
   }, []);
 
+  const requestSuggestions = useCallback((conversationId: string, baseMessageCount: number, showLoading: boolean) => {
+    if (showLoading) {
+      setState((prev) => ({ ...prev, loadingAiSuggestions: true }));
+    }
+
+    void frontendAiService.getSuggestions(conversationId)
+      .then((suggestions) => {
+        setState((prev) => {
+          const isActiveConversation = prev.selectedConversationId === conversationId;
+
+          return {
+            ...prev,
+            aiSuggestions: isActiveConversation ? suggestions : prev.aiSuggestions,
+            loadingAiSuggestions: isActiveConversation ? false : prev.loadingAiSuggestions,
+            aiUnavailable: false,
+            suggestionCacheByConversationId: {
+              ...prev.suggestionCacheByConversationId,
+              [conversationId]: {
+                suggestions,
+                baseMessageCount,
+              },
+            },
+          };
+        });
+      })
+      .catch((error: { code?: string } | undefined) => {
+        setState((prev) => {
+          const isActiveConversation = prev.selectedConversationId === conversationId;
+
+          return {
+            ...prev,
+            aiSuggestions: isActiveConversation ? [] : prev.aiSuggestions,
+            loadingAiSuggestions: isActiveConversation ? false : prev.loadingAiSuggestions,
+            aiUnavailable: error?.code === 'RATE_LIMITED'
+              || error?.code === 'TIMEOUT'
+              || error?.code === 'SERVICE_UNAVAILABLE',
+          };
+        });
+      });
+  }, []);
+
   const selectConversation = useCallback(async (conversationId: string) => {
-    setState((prev) => ({
-      ...prev,
-      selectedConversationId: conversationId,
-      loadingMessages: true,
-      messages: [],
-      membershipEvents: [],
-      hasMoreMessages: true,
-      waitingForAiConversationId:
-        prev.waitingForAiConversationId === conversationId
-          ? prev.waitingForAiConversationId
-          : null,
-    }));
+    let shouldPreloadSuggestions = false;
+
+    setState((prev) => {
+      const cachedSuggestions = prev.suggestionCacheByConversationId[conversationId];
+      shouldPreloadSuggestions = !cachedSuggestions && prev.aiEnabled;
+
+      return {
+        ...prev,
+        selectedConversationId: conversationId,
+        loadingMessages: true,
+        messages: [],
+        membershipEvents: [],
+        hasMoreMessages: true,
+        aiSuggestions: cachedSuggestions?.suggestions ?? [],
+        loadingAiSuggestions: shouldPreloadSuggestions,
+        waitingForAiConversationId:
+          prev.waitingForAiConversationId === conversationId
+            ? prev.waitingForAiConversationId
+            : null,
+      };
+    });
 
     try {
       const [messages, membershipEvents] = await Promise.all([
@@ -300,6 +374,11 @@ export function ChatPage() {
         loadingMessages: false,
         hasMoreMessages: messages.length >= 10,
       }));
+      scrollToLatestMessage("auto");
+
+      if (shouldPreloadSuggestions && state.aiEnabled && !state.aiUnavailable) {
+        requestSuggestions(conversationId, messages.length, false);
+      }
 
       const readState =
         chatSocketService.getConnectionState() === "connected"
@@ -348,17 +427,31 @@ export function ChatPage() {
 
         conversationsRef.current = nextConversations;
 
+        const nextMessages =
+          prev.selectedConversationId === message.conversationId
+            ? upsertMessage(prev.messages, message)
+            : prev.messages;
+        const currentSuggestionCache = prev.suggestionCacheByConversationId[message.conversationId];
+        const nextSuggestionCacheByConversationId = {
+          ...prev.suggestionCacheByConversationId,
+        };
+
+        if (currentSuggestionCache) {
+          const nextMessageCount = nextMessages.length;
+          if (nextMessageCount - currentSuggestionCache.baseMessageCount > 3) {
+            delete nextSuggestionCacheByConversationId[message.conversationId];
+          }
+        }
+
         return {
           ...prev,
           conversations: nextConversations,
-          messages:
-            prev.selectedConversationId === message.conversationId
-              ? upsertMessage(prev.messages, message)
-              : prev.messages,
+          messages: nextMessages,
           waitingForAiConversationId:
             message.isAIBotMessage && prev.waitingForAiConversationId === message.conversationId
               ? null
               : prev.waitingForAiConversationId,
+          suggestionCacheByConversationId: nextSuggestionCacheByConversationId,
         };
       });
 
@@ -366,12 +459,22 @@ export function ChatPage() {
         void loadConversations();
       }
 
+      if (
+        message.conversationId === state.selectedConversationId
+        && (incomingMessage.senderId === currentUser?.id || shouldStickToBottomRef.current)
+      ) {
+        scrollToLatestMessage();
+      }
+
       if (incomingMessage.senderId === currentUser?.id) {
         setInputValue("");
         setState((prev) => ({ ...prev, sendingMessage: false, draftAttachment: null }));
+        window.requestAnimationFrame(() => {
+          composerInputRef.current?.focus();
+        });
       }
     },
-    [currentUser?.id, loadConversations],
+    [currentUser?.id, loadConversations, scrollToLatestMessage, state.selectedConversationId],
   );
 
   const handlePreviewUpdate = useCallback(
@@ -761,6 +864,10 @@ export function ChatPage() {
   const handleScroll = useCallback(() => {
     const container = messageThreadRef.current;
     if (!container) return;
+
+    shouldStickToBottomRef.current =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+
     if (
       container.scrollTop === 0 &&
       state.hasMoreMessages &&
@@ -859,6 +966,8 @@ export function ChatPage() {
       ...prev,
       slashCommandsVisible: false,
       slashCommandQuery: '',
+      waitingForAiConversationId:
+        command === '/ai' ? prev.waitingForAiConversationId : null,
     }));
   }, []);
 
@@ -1104,6 +1213,9 @@ export function ChatPage() {
     selectedConversation?.displayTitle ||
     selectedConversation?.title ||
     "Chọn một đoạn chat";
+  const headerAvatarUrl =
+    selectedConversation?.displayAvatarUrl ||
+    selectedConversation?.directPeer?.avatarUrl;
   const activeTypingPresence = state.selectedConversationId
     ? state.typingByConversationId[state.selectedConversationId]
     : undefined;
@@ -1206,7 +1318,7 @@ export function ChatPage() {
             <div style={styles.chatTopStack}>
               <header style={styles.chatHeaderSimple}>
                 <div style={styles.chatHeaderLeftSimple}>
-                  <Avatar size={42} style={styles.chatHeaderAvatar}>
+                  <Avatar size={42} src={headerAvatarUrl} style={styles.chatHeaderAvatar}>
                     {headerTitle.charAt(0).toUpperCase()}
                   </Avatar>
                   <div>
@@ -1383,15 +1495,21 @@ export function ChatPage() {
             />
 
             <ChatComposer
+              inputRef={composerInputRef}
               value={inputValue}
               onChange={(value) => {
                 setInputValue(value);
 
+                const trimmedValue = value.trim();
                 const slashMatch = value.match(/^\/(\S*)?$/);
                 setState((prev) => ({
                   ...prev,
                   slashCommandsVisible: Boolean(slashMatch),
                   slashCommandQuery: slashMatch?.[1] ?? '',
+                  waitingForAiConversationId:
+                    trimmedValue.startsWith('/ai') || prev.sendingMessage
+                      ? prev.waitingForAiConversationId
+                      : null,
                 }));
 
                 if (
@@ -1403,7 +1521,7 @@ export function ChatPage() {
 
                 void chatSocketService.updateTypingPresence(
                   state.selectedConversationId,
-                  value.trim().length > 0,
+                  trimmedValue.length > 0,
                 );
               }}
               onFocus={() => {
@@ -1411,26 +1529,17 @@ export function ChatPage() {
                   return;
                 }
 
-                setState((prev) => ({ ...prev, loadingAiSuggestions: true }));
-                void frontendAiService.getSuggestions(state.selectedConversationId)
-                  .then((suggestions) => {
-                    setState((prev) => ({
-                      ...prev,
-                      aiSuggestions: suggestions,
-                      loadingAiSuggestions: false,
-                      aiUnavailable: false,
-                    }));
-                  })
-                  .catch((error: { code?: string } | undefined) => {
-                    setState((prev) => ({
-                      ...prev,
-                      aiSuggestions: [],
-                      loadingAiSuggestions: false,
-                      aiUnavailable: error?.code === 'RATE_LIMITED'
-                        || error?.code === 'TIMEOUT'
-                        || error?.code === 'SERVICE_UNAVAILABLE',
-                    }));
-                  });
+                const cachedSuggestions = state.suggestionCacheByConversationId[state.selectedConversationId];
+                if (cachedSuggestions && state.messages.length - cachedSuggestions.baseMessageCount <= 3) {
+                  setState((prev) => ({
+                    ...prev,
+                    aiSuggestions: cachedSuggestions.suggestions,
+                    loadingAiSuggestions: false,
+                  }));
+                  return;
+                }
+
+                requestSuggestions(state.selectedConversationId, state.messages.length, true);
               }}
               onSend={handleSend}
               onLeave={handleLeave}
